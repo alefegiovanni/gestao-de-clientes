@@ -11,3 +11,4 @@ if (supabaseUrl && supabaseKey) {
 }
 
 module.exports = supabase;
+

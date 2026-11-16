@@ -1,15 +1,4 @@
-const { createClient } = require('@supabase/supabase-js');
-
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  console.warn('SUPABASE_URL ou SUPABASE_KEY não configuradas!');
-}
-
-const supabase = (supabaseUrl && supabaseKey) 
-  ? createClient(supabaseUrl, supabaseKey) 
-  : null;
+const { neon } = require('@neondatabase/serverless');
 
 function extrairCompetencia(dataStr) {
   if (!dataStr || dataStr.length < 7) return '';
@@ -17,7 +6,6 @@ function extrairCompetencia(dataStr) {
 }
 
 module.exports = async (req, res) => {
-  // Configurar CORS
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -30,13 +18,15 @@ module.exports = async (req, res) => {
     return res.status(200).end();
   }
 
-  if (!supabase) {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
     return res.status(500).json({ 
-      error: 'Variáveis de ambiente do Supabase (SUPABASE_URL / SUPABASE_KEY) não estão configuradas na Vercel.' 
+      error: 'Variável de ambiente DATABASE_URL não configurada na Vercel.' 
     });
   }
 
-  // Parse path da URL: e.g. /api/dashboard, /api/vendas
+  const sql = neon(databaseUrl);
+
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = url.pathname.replace(/^\/api/, '');
   const method = req.method;
@@ -44,31 +34,25 @@ module.exports = async (req, res) => {
   try {
     // 1. GET /api/opcoes
     if (pathname === '/opcoes' && method === 'GET') {
-      const { data: pagamentos, error: errPag } = await supabase.from('pagamentos').select('id, nome').order('nome');
-      if (errPag) throw errPag;
-
-      const { data: captacoes, error: errCap } = await supabase.from('captacoes').select('id, nome').order('nome');
-      if (errCap) throw errCap;
-
-      return res.json({ pagamentos: pagamentos || [], captacoes: captacoes || [] });
+      const pagamentos = await sql`SELECT id, nome FROM pagamentos ORDER BY nome ASC`;
+      const captacoes = await sql`SELECT id, nome FROM captacoes ORDER BY nome ASC`;
+      return res.json({ pagamentos, captacoes });
     }
 
     // POST /api/opcoes/pagamentos
     if (pathname === '/opcoes/pagamentos' && method === 'POST') {
       const { nome } = req.body || {};
       if (!nome || !nome.trim()) return res.status(400).json({ error: 'Nome é obrigatório' });
-      const { data, error } = await supabase.from('pagamentos').insert([{ nome: nome.trim() }]).select().single();
-      if (error) return res.status(400).json({ error: 'Forma de pagamento já existe ou inválida' });
-      return res.json(data);
+      const resultado = await sql`INSERT INTO pagamentos (nome) VALUES (${nome.trim()}) RETURNING id, nome`;
+      return res.json(resultado[0]);
     }
 
     // POST /api/opcoes/captacoes
     if (pathname === '/opcoes/captacoes' && method === 'POST') {
       const { nome } = req.body || {};
       if (!nome || !nome.trim()) return res.status(400).json({ error: 'Nome é obrigatório' });
-      const { data, error } = await supabase.from('captacoes').insert([{ nome: nome.trim() }]).select().single();
-      if (error) return res.status(400).json({ error: 'Forma de captação já existe ou inválida' });
-      return res.json(data);
+      const resultado = await sql`INSERT INTO captacoes (nome) VALUES (${nome.trim()}) RETURNING id, nome`;
+      return res.json(resultado[0]);
     }
 
     // 2. GET /api/dashboard
@@ -79,39 +63,36 @@ module.exports = async (req, res) => {
       const competenciaAtual = `${anoAtual}-${mesAtual}`;
 
       // Card 1: Vendas no mês
-      const { data: vendasMes, error: errMes } = await supabase
-        .from('vendas')
-        .select('valor_credito')
-        .eq('mes_ano_competencia', competenciaAtual);
-      if (errMes) throw errMes;
-      const totalMes = (vendasMes || []).reduce((acc, curr) => acc + Number(curr.valor_credito), 0);
+      const resMes = await sql`
+        SELECT COALESCE(SUM(valor_credito), 0)::float as total_mes
+        FROM vendas
+        WHERE mes_ano_competencia = ${competenciaAtual}
+      `;
 
       // Card 2: Quantidade de vendas
-      const { count: qtdVendas, error: errQtd } = await supabase
-        .from('vendas')
-        .select('*', { count: 'exact', head: true });
-      if (errQtd) throw errQtd;
+      const resQtd = await sql`
+        SELECT COUNT(*)::int as qtd_vendas
+        FROM vendas
+      `;
 
       // Card 3: Ticket médio
-      const { data: todasVendas, error: errTodas } = await supabase
-        .from('vendas')
-        .select('valor_credito');
-      if (errTodas) throw errTodas;
-      const somaGeral = (todasVendas || []).reduce((acc, curr) => acc + Number(curr.valor_credito), 0);
-      const ticketMedio = (todasVendas && todasVendas.length > 0) ? (somaGeral / todasVendas.length) : 0;
+      const resTicket = await sql`
+        SELECT COALESCE(AVG(valor_credito), 0)::float as ticket_medio
+        FROM vendas
+      `;
 
       // Card 4: Clientes cadastrados
-      const { count: qtdClientes, error: errCli } = await supabase
-        .from('clientes')
-        .select('*', { count: 'exact', head: true });
-      if (errCli) throw errCli;
+      const resCli = await sql`
+        SELECT COUNT(*)::int as qtd_clientes
+        FROM clientes
+      `;
 
       return res.json({
         competenciaAtual,
-        vendasNoMes: totalMes,
-        quantidadeVendas: qtdVendas || 0,
-        ticketMedio,
-        clientesCadastrados: qtdClientes || 0
+        vendasNoMes: resMes[0]?.total_mes || 0,
+        quantidadeVendas: resQtd[0]?.qtd_vendas || 0,
+        ticketMedio: resTicket[0]?.ticket_medio || 0,
+        clientesCadastrados: resCli[0]?.qtd_clientes || 0
       });
     }
 
@@ -145,107 +126,73 @@ module.exports = async (req, res) => {
       const mesAnoCompetencia = extrairCompetencia(dataVenda);
 
       // Verificar duplicidade de contrato
-      const { data: ctExistente } = await supabase
-        .from('contratos')
-        .select('id')
-        .eq('numero', contratoNorm)
-        .maybeSingle();
-
-      if (ctExistente) {
+      const ctExistente = await sql`SELECT id FROM contratos WHERE numero = ${contratoNorm} LIMIT 1`;
+      if (ctExistente.length > 0) {
         return res.status(400).json({ 
           error: `O contrato número "${contratoNorm}" já está cadastrado no sistema. Não é permitida a duplicidade de contratos.` 
         });
       }
 
-      // Cliente
+      // 1. Cliente
+      let cliente = await sql`SELECT id FROM clientes WHERE LOWER(nome) = LOWER(${clienteNorm}) LIMIT 1`;
       let clienteId;
-      const { data: cliExistente } = await supabase
-        .from('clientes')
-        .select('id')
-        .ilike('nome', clienteNorm)
-        .maybeSingle();
-
-      if (cliExistente) {
-        clienteId = cliExistente.id;
+      if (cliente.length > 0) {
+        clienteId = cliente[0].id;
       } else {
-        const { data: novoCli, error: errCli } = await supabase
-          .from('clientes')
-          .insert([{ nome: clienteNorm }])
-          .select('id')
-          .single();
-        if (errCli) throw errCli;
-        clienteId = novoCli.id;
+        const novoCli = await sql`INSERT INTO clientes (nome) VALUES (${clienteNorm}) RETURNING id`;
+        clienteId = novoCli[0].id;
       }
 
-      // Grupo
+      // 2. Grupo
+      let grupo = await sql`SELECT id FROM grupos WHERE numero = ${grupoNorm} LIMIT 1`;
       let grupoId;
-      const { data: grpExistente } = await supabase
-        .from('grupos')
-        .select('id')
-        .eq('numero', grupoNorm)
-        .maybeSingle();
-
-      if (grpExistente) {
-        grupoId = grpExistente.id;
+      if (grupo.length > 0) {
+        grupoId = grupo[0].id;
       } else {
-        const { data: novoGrp, error: errGrp } = await supabase
-          .from('grupos')
-          .insert([{ numero: grupoNorm }])
-          .select('id')
-          .single();
-        if (errGrp) throw errGrp;
-        grupoId = novoGrp.id;
+        const novoGrp = await sql`INSERT INTO grupos (numero) VALUES (${grupoNorm}) RETURNING id`;
+        grupoId = novoGrp[0].id;
       }
 
-      // Cota
+      // 3. Cota
+      let cota = await sql`SELECT id FROM cotas WHERE grupo_id = ${grupoId} AND numero = ${cotaNorm} LIMIT 1`;
       let cotaId;
-      const { data: cotaExistente } = await supabase
-        .from('cotas')
-        .select('id')
-        .eq('grupo_id', grupoId)
-        .eq('numero', cotaNorm)
-        .maybeSingle();
-
-      if (cotaExistente) {
-        cotaId = cotaExistente.id;
+      if (cota.length > 0) {
+        cotaId = cota[0].id;
       } else {
-        const { data: novaCota, error: errCota } = await supabase
-          .from('cotas')
-          .insert([{ grupo_id: grupoId, numero: cotaNorm }])
-          .select('id')
-          .single();
-        if (errCota) throw errCota;
-        cotaId = novaCota.id;
+        const novaCota = await sql`INSERT INTO cotas (grupo_id, numero) VALUES (${grupoId}, ${cotaNorm}) RETURNING id`;
+        cotaId = novaCota[0].id;
       }
 
-      // Contrato
-      const { data: novoCt, error: errCt } = await supabase
-        .from('contratos')
-        .insert([{ numero: contratoNorm, cliente_id: clienteId }])
-        .select('id')
-        .single();
-      if (errCt) throw errCt;
+      // 4. Contrato
+      const novoCt = await sql`INSERT INTO contratos (numero, cliente_id) VALUES (${contratoNorm}, ${clienteId}) RETURNING id`;
+      const contratoId = novoCt[0].id;
 
-      // Venda
-      const { data: novaVenda, error: errVenda } = await supabase
-        .from('vendas')
-        .insert([{
-          cliente_id: clienteId,
-          contrato_id: novoCt.id,
-          cota_id: cotaId,
-          pagamento_id: formaPagamentoId,
-          captacao_id: formaCaptacaoId,
-          valor_credito: valCreditoNum,
-          data_venda: dataVenda,
-          mes_ano_competencia: mesAnoCompetencia
-        }])
-        .select('id')
-        .single();
-      if (errVenda) throw errVenda;
+      // 5. Venda
+      const novaVenda = await sql`
+        INSERT INTO vendas (
+          cliente_id,
+          contrato_id,
+          cota_id,
+          pagamento_id,
+          captacao_id,
+          valor_credito,
+          data_venda,
+          mes_ano_competencia
+        ) VALUES (
+          ${clienteId},
+          ${contratoId},
+          ${cotaId},
+          ${formaPagamentoId},
+          ${formaCaptacaoId},
+          ${valCreditoNum},
+          ${dataVenda},
+          ${mesAnoCompetencia}
+        ) RETURNING id
+      `;
 
       return res.status(201).json({
         success: true,
-        vendaId: novaVenda.id,
+        vendaId: novaVenda[0].id,
         message: 'Venda cadastrada com sucesso!'
       });
     }
@@ -253,36 +200,44 @@ module.exports = async (req, res) => {
     // 4. GET /api/clientes
     if (pathname === '/clientes' && method === 'GET') {
       const busca = url.searchParams.get('busca') || '';
-      const { data, error } = await supabase
-        .from('vendas')
-        .select(`
-          id,
-          valor_credito,
-          data_venda,
-          clientes!inner (nome),
-          contratos!inner (numero),
-          cotas!inner (numero, grupos!inner (numero))
-        `)
-        .order('data_venda', { ascending: false });
-
-      if (error) throw error;
-
-      let formatados = (data || []).map(v => ({
-        venda_id: v.id,
-        cliente_nome: v.clientes?.nome,
-        contrato_numero: v.contratos?.numero,
-        cota_numero: v.cotas?.numero,
-        grupo_numero: v.cotas?.grupos?.numero,
-        valor_credito: v.valor_credito,
-        data_venda: v.data_venda
-      }));
+      let formatados;
 
       if (busca && busca.trim()) {
-        const term = busca.trim().toLowerCase();
-        formatados = formatados.filter(item => 
-          (item.cliente_nome && item.cliente_nome.toLowerCase().includes(term)) ||
-          (item.contrato_numero && item.contrato_numero.toLowerCase().includes(term))
-        );
+        const termo = `%${busca.trim()}%`;
+        formatados = await sql`
+          SELECT 
+            v.id as venda_id,
+            c.nome as cliente_nome,
+            ct.numero as contrato_numero,
+            cot.numero as cota_numero,
+            g.numero as grupo_numero,
+            v.valor_credito::float,
+            TO_CHAR(v.data_venda, 'YYYY-MM-DD') as data_venda
+          FROM vendas v
+          JOIN clientes c ON v.cliente_id = c.id
+          JOIN contratos ct ON v.contrato_id = ct.id
+          JOIN cotas cot ON v.cota_id = cot.id
+          JOIN grupos g ON cot.grupo_id = g.id
+          WHERE c.nome ILIKE ${termo} OR ct.numero ILIKE ${termo}
+          ORDER BY v.data_venda DESC, v.id DESC
+        `;
+      } else {
+        formatados = await sql`
+          SELECT 
+            v.id as venda_id,
+            c.nome as cliente_nome,
+            ct.numero as contrato_numero,
+            cot.numero as cota_numero,
+            g.numero as grupo_numero,
+            v.valor_credito::float,
+            TO_CHAR(v.data_venda, 'YYYY-MM-DD') as data_venda
+          FROM vendas v
+          JOIN clientes c ON v.cliente_id = c.id
+          JOIN contratos ct ON v.contrato_id = ct.id
+          JOIN cotas cot ON v.cota_id = cot.id
+          JOIN grupos g ON cot.grupo_id = g.id
+          ORDER BY v.data_venda DESC, v.id DESC
+        `;
       }
 
       return res.json(formatados);
@@ -291,36 +246,46 @@ module.exports = async (req, res) => {
     // 5. GET /api/contratos
     if (pathname === '/contratos' && method === 'GET') {
       const busca = url.searchParams.get('busca') || '';
-      const { data, error } = await supabase
-        .from('vendas')
-        .select(`
-          valor_credito,
-          data_venda,
-          contratos!inner (numero),
-          clientes!inner (nome),
-          cotas!inner (numero, grupos!inner (numero)),
-          pagamentos!inner (nome)
-        `)
-        .order('data_venda', { ascending: false });
-
-      if (error) throw error;
-
-      let formatados = (data || []).map(v => ({
-        contrato_numero: v.contratos?.numero,
-        cliente_nome: v.clientes?.nome,
-        valor_credito: v.valor_credito,
-        cota_numero: v.cotas?.numero,
-        grupo_numero: v.cotas?.grupos?.numero,
-        data_venda: v.data_venda,
-        forma_pagamento: v.pagamentos?.nome
-      }));
+      let formatados;
 
       if (busca && busca.trim()) {
-        const term = busca.trim().toLowerCase();
-        formatados = formatados.filter(item => 
-          (item.contrato_numero && item.contrato_numero.toLowerCase().includes(term)) ||
-          (item.cliente_nome && item.cliente_nome.toLowerCase().includes(term))
-        );
+        const termo = `%${busca.trim()}%`;
+        formatados = await sql`
+          SELECT 
+            ct.numero as contrato_numero,
+            c.nome as cliente_nome,
+            v.valor_credito::float,
+            cot.numero as cota_numero,
+            g.numero as grupo_numero,
+            TO_CHAR(v.data_venda, 'YYYY-MM-DD') as data_venda,
+            p.nome as forma_pagamento
+          FROM vendas v
+          JOIN clientes c ON v.cliente_id = c.id
+          JOIN contratos ct ON v.contrato_id = ct.id
+          JOIN cotas cot ON v.cota_id = cot.id
+          JOIN grupos g ON cot.grupo_id = g.id
+          JOIN pagamentos p ON v.pagamento_id = p.id
+          WHERE ct.numero ILIKE ${termo} OR c.nome ILIKE ${termo}
+          ORDER BY v.data_venda DESC, ct.numero ASC
+        `;
+      } else {
+        formatados = await sql`
+          SELECT 
+            ct.numero as contrato_numero,
+            c.nome as cliente_nome,
+            v.valor_credito::float,
+            cot.numero as cota_numero,
+            g.numero as grupo_numero,
+            TO_CHAR(v.data_venda, 'YYYY-MM-DD') as data_venda,
+            p.nome as forma_pagamento
+          FROM vendas v
+          JOIN clientes c ON v.cliente_id = c.id
+          JOIN contratos ct ON v.contrato_id = ct.id
+          JOIN cotas cot ON v.cota_id = cot.id
+          JOIN grupos g ON cot.grupo_id = g.id
+          JOIN pagamentos p ON v.pagamento_id = p.id
+          ORDER BY v.data_venda DESC, ct.numero ASC
+        `;
       }
 
       return res.json(formatados);
@@ -330,18 +295,20 @@ module.exports = async (req, res) => {
     if (pathname === '/relatorios' && method === 'GET') {
       const mesAno = url.searchParams.get('mesAno');
 
-      const { data: todas, error: errTodas } = await supabase
-        .from('vendas')
-        .select('valor_credito, mes_ano_competencia');
-      if (errTodas) throw errTodas;
+      const resGeral = await sql`
+        SELECT COALESCE(SUM(valor_credito), 0)::float as total_geral
+        FROM vendas
+      `;
+      const totalGeral = resGeral[0]?.total_geral || 0;
 
-      const totalGeral = (todas || []).reduce((acc, curr) => acc + Number(curr.valor_credito), 0);
       let totalMesSelecionado = 0;
-
       if (mesAno && /^\d{4}-\d{2}$/.test(mesAno)) {
-        totalMesSelecionado = (todas || [])
-          .filter(v => v.mes_ano_competencia === mesAno)
-          .reduce((acc, curr) => acc + Number(curr.valor_credito), 0);
+        const resMes = await sql`
+          SELECT COALESCE(SUM(valor_credito), 0)::float as total_mes
+          FROM vendas
+          WHERE mes_ano_competencia = ${mesAno}
+        `;
+        totalMesSelecionado = resMes[0]?.total_mes || 0;
       }
 
       return res.json({
@@ -359,35 +326,27 @@ module.exports = async (req, res) => {
         mesAno = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
       }
 
-      const { data, error } = await supabase
-        .from('vendas')
-        .select(`
-          id,
-          valor_credito,
-          data_venda,
-          mes_ano_competencia,
-          clientes!inner (nome),
-          contratos!inner (numero),
-          cotas!inner (numero, grupos!inner (numero)),
-          pagamentos!inner (nome),
-          captacoes!inner (nome)
-        `)
-        .eq('mes_ano_competencia', mesAno)
-        .order('data_venda', { ascending: false });
-
-      if (error) throw error;
-
-      const vendas = (data || []).map(v => ({
-        venda_id: v.id,
-        cliente_nome: v.clientes?.nome,
-        valor_credito: v.valor_credito,
-        forma_pagamento: v.pagamentos?.nome,
-        cota_numero: v.cotas?.numero,
-        grupo_numero: v.cotas?.grupos?.numero,
-        data_venda: v.data_venda,
-        contrato_numero: v.contratos?.numero,
-        forma_captacao: v.captacoes?.nome
-      }));
+      const vendas = await sql`
+        SELECT 
+          v.id as venda_id,
+          c.nome as cliente_nome,
+          v.valor_credito::float,
+          p.nome as forma_pagamento,
+          cot.numero as cota_numero,
+          g.numero as grupo_numero,
+          TO_CHAR(v.data_venda, 'YYYY-MM-DD') as data_venda,
+          ct.numero as contrato_numero,
+          cap.nome as forma_captacao
+        FROM vendas v
+        JOIN clientes c ON v.cliente_id = c.id
+        JOIN contratos ct ON v.contrato_id = ct.id
+        JOIN cotas cot ON v.cota_id = cot.id
+        JOIN grupos g ON cot.grupo_id = g.id
+        JOIN pagamentos p ON v.pagamento_id = p.id
+        JOIN captacoes cap ON v.captacao_id = cap.id
+        WHERE v.mes_ano_competencia = ${mesAno}
+        ORDER BY v.data_venda DESC, v.id DESC
+      `;
 
       return res.json({
         mesSelecionado: mesAno,

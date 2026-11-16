@@ -81,3 +81,4 @@ INSERT INTO captacoes (nome) VALUES
   ('Parceria'),
   ('Outros')
 ON CONFLICT (nome) DO NOTHING;
+
