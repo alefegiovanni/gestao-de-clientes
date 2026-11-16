@@ -277,21 +277,113 @@ const app = {
     });
   },
 
-  // Mês da venda identificado automaticamente a partir da data da venda
+  converterDataBRparaISO(dataBR) {
+    if (!dataBR) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dataBR)) return dataBR;
+    const partes = dataBR.trim().split('/');
+    if (partes.length === 3) {
+      const dia = partes[0].padStart(2, '0');
+      const mes = partes[1].padStart(2, '0');
+      const ano = partes[2];
+      if (dia && mes && ano && ano.length === 4) {
+        return `${ano}-${mes}-${dia}`;
+      }
+    }
+    return '';
+  },
+
+  converterDataISOparaBR(dataISO) {
+    if (!dataISO) return '';
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(dataISO)) return dataISO;
+    const partes = dataISO.trim().split('-');
+    if (partes.length === 3) {
+      const [ano, mes, dia] = partes;
+      return `${dia.padStart(2, '0')}/${mes.padStart(2, '0')}/${ano}`;
+    }
+    return dataISO;
+  },
+
+  // Máscara com pulo automático de Dia -> Mês -> Ano
+  aplicarMascaraData(input, onDataCompleta) {
+    if (!input) return;
+
+    input.addEventListener('keydown', (e) => {
+      // Se digitar '/', autocompleta dígito único de dia ou mês (ex: 5/ -> 05/)
+      if (e.key === '/') {
+        const raw = input.value.replace(/\D/g, '');
+        if (raw.length === 1) {
+          e.preventDefault();
+          input.value = `0${raw}/`;
+          return;
+        }
+        if (raw.length === 3) {
+          e.preventDefault();
+          input.value = `${raw.substring(0, 2)}/0${raw.substring(2)}/`;
+          return;
+        }
+      }
+    });
+
+    input.addEventListener('input', (e) => {
+      let v = input.value.replace(/\D/g, '');
+      if (v.length > 8) v = v.substring(0, 8);
+
+      if (e.inputType === 'deleteContentBackward') {
+        if (v.length <= 2) {
+          input.value = v;
+        } else if (v.length <= 4) {
+          input.value = v.substring(0, 2) + '/' + v.substring(2);
+        } else {
+          input.value = v.substring(0, 2) + '/' + v.substring(2, 4) + '/' + v.substring(4);
+        }
+        return;
+      }
+
+      let formatado = '';
+      if (v.length > 0) formatado = v.substring(0, 2);
+      if (v.length >= 2) {
+        formatado += '/';
+        if (v.length > 2) formatado += v.substring(2, 4);
+      }
+      if (v.length >= 4) {
+        formatado += '/';
+        if (v.length > 4) formatado += v.substring(4, 8);
+      }
+
+      input.value = formatado;
+
+      if (v.length === 8) {
+        const dia = v.substring(0, 2);
+        const mes = v.substring(2, 4);
+        const ano = v.substring(4, 8);
+        const diaNum = parseInt(dia, 10);
+        const mesNum = parseInt(mes, 10);
+        const anoNum = parseInt(ano, 10);
+
+        if (diaNum >= 1 && diaNum <= 31 && mesNum >= 1 && mesNum <= 12 && anoNum >= 1900 && anoNum <= 2100) {
+          const iso = `${ano}-${mes}-${dia}`;
+          if (onDataCompleta) onDataCompleta(iso);
+        }
+      }
+    });
+  },
+
+  // Data da venda com preenchimento inicial padrão e salto automático
   configurarDataAutomatica() {
     const inputData = document.getElementById('campoDataVenda');
     const inputMes = document.getElementById('campoMesVenda');
 
-    // Preenche com a data atual por padrão
+    // Preenche com a data atual por padrão no formato BR
     const hoje = new Date();
     const ano = hoje.getFullYear();
     const mes = String(hoje.getMonth() + 1).padStart(2, '0');
     const dia = String(hoje.getDate()).padStart(2, '0');
-    inputData.value = `${ano}-${mes}-${dia}`;
-    this.atualizarCompetenciaAutomatico(inputData.value);
+    inputData.value = `${dia}/${mes}/${ano}`;
+    inputMes.value = this.calcularCompetenciaCiclo(`${ano}-${mes}-${dia}`);
 
-    inputData.addEventListener('change', () => {
-      this.atualizarCompetenciaAutomatico(inputData.value);
+    // Aplicar máscara inteligente com salto automático de dia para mês e ano
+    this.aplicarMascaraData(inputData, (iso) => {
+      inputMes.value = this.calcularCompetenciaCiclo(iso);
     });
   },
 
@@ -342,7 +434,12 @@ const app = {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
 
-      const dataVenda = document.getElementById('campoDataVenda').value;
+      const dataVendaBR = document.getElementById('campoDataVenda').value;
+      const dataVenda = this.converterDataBRparaISO(dataVendaBR);
+      if (!dataVenda || !/^\d{4}-\d{2}-\d{2}$/.test(dataVenda)) {
+        this.mostrarToast('Por favor, informe uma data válida no formato DD/MM/AAAA.', 'erro');
+        return;
+      }
       const mesAnoCompetencia = document.getElementById('campoMesVenda').value;
       const nomeCliente = document.getElementById('campoNomeCliente').value.trim();
       const valorStr = document.getElementById('campoValorCredito').value;
@@ -388,13 +485,13 @@ const app = {
         this.mostrarToast('Venda cadastrada com sucesso!');
         form.reset();
         
-        // Restaurar data de hoje
+        // Restaurar data de hoje no formato BR
         const hoje = new Date();
         const ano = hoje.getFullYear();
         const mes = String(hoje.getMonth() + 1).padStart(2, '0');
         const dia = String(hoje.getDate()).padStart(2, '0');
-        document.getElementById('campoDataVenda').value = `${ano}-${mes}-${dia}`;
-        this.atualizarCompetenciaAutomatico(`${ano}-${mes}-${dia}`);
+        document.getElementById('campoDataVenda').value = `${dia}/${mes}/${ano}`;
+        document.getElementById('campoMesVenda').value = this.calcularCompetenciaCiclo(`${ano}-${mes}-${dia}`);
 
         // Atualizar indicadores e redirecionar para o dashboard
         this.carregarDashboard();
@@ -801,12 +898,9 @@ const app = {
       if (e.target === modal) fechar();
     });
 
-    // Atualizar sugestão de competência no edit ao alterar data
-    inputData.addEventListener('change', () => {
-      if (inputData.value) {
-        const competencia = this.calcularCompetenciaCiclo(inputData.value);
-        inputMes.value = competencia;
-      }
+    // Aplicar máscara inteligente com salto automático no modal
+    this.aplicarMascaraData(inputData, (iso) => {
+      inputMes.value = this.calcularCompetenciaCiclo(iso);
     });
 
     // Máscara monetária no edit
@@ -827,7 +921,12 @@ const app = {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const vendaId = document.getElementById('editVendaId').value;
-      const dataVenda = inputData.value;
+      const dataVendaBR = inputData.value;
+      const dataVenda = this.converterDataBRparaISO(dataVendaBR);
+      if (!dataVenda || !/^\d{4}-\d{2}-\d{2}$/.test(dataVenda)) {
+        this.mostrarToast('Por favor, informe uma data válida no formato DD/MM/AAAA.', 'erro');
+        return;
+      }
       const mesAnoCompetencia = inputMes.value;
       const nomeCliente = document.getElementById('editNomeCliente').value.trim();
       const valorStr = inputValor.value;
@@ -904,7 +1003,7 @@ const app = {
   abrirModalEdicao(item) {
     const modal = document.getElementById('modalEdicao');
     document.getElementById('editVendaId').value = item.venda_id;
-    document.getElementById('editDataVenda').value = item.data_venda;
+    document.getElementById('editDataVenda').value = this.converterDataISOparaBR(item.data_venda);
     
     const comp = item.mes_ano_competencia || (item.data_venda ? this.calcularCompetenciaCiclo(item.data_venda) : '');
     document.getElementById('editMesVenda').value = comp;
