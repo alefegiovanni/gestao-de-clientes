@@ -192,6 +192,10 @@ body {
   z-index: 95;
 }
 
+html, body {
+  overflow-x: hidden;
+}
+
 /* MAIN CONTENT */
 .main-wrapper {
   flex: 1;
@@ -199,13 +203,15 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
+  max-width: calc(100vw - 260px);
 }
 
 .main-content {
   padding: 24px 28px;
-  max-width: 100%;
   width: 100%;
   margin: 0;
+  overflow-x: hidden;
 }
 
 .page-header {
@@ -356,21 +362,47 @@ body {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   box-shadow: var(--card-shadow);
-  overflow: visible;
+  overflow: hidden;
+  width: 100%;
 }
 
 .table-responsive {
   width: 100%;
-  overflow-x: auto;
+  overflow-x: scroll !important;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: auto;
+  scrollbar-color: #15803d #e2e8f0;
+}
+
+/* Barra de rolagem FÍSICA FIXA em cada tabela, grossa (14px) para clicar com o mouse */
+.table-responsive::-webkit-scrollbar {
+  height: 14px !important;
+  background-color: #e2e8f0 !important;
+  display: block !important;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+  background: #e2e8f0 !important;
+  border-radius: 7px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+  background-color: #15803d !important; /* Verde Porto bem visível */
+  border-radius: 7px;
+  border: 2px solid #e2e8f0 !important;
+  cursor: grab;
+}
+
+.table-responsive::-webkit-scrollbar-thumb:hover {
+  background-color: #166534 !important;
 }
 
 .custom-table {
   width: 100%;
+  min-width: 1100px; /* Garante que o scroll aconteça SOMENTE DENTRO de cada tabela */
   border-collapse: collapse;
   text-align: left;
   font-size: 0.85rem;
-  table-layout: auto;
 }
 
 .custom-table th {
