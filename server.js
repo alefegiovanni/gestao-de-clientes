@@ -17,20 +17,20 @@ function extrairCompetencia(dataStr) {
   return dataStr.substring(0, 7); // 'YYYY-MM'
 }
 
-// 0. Autenticação por PIN de 4 dígitos
+// 0. Autenticação por Usuário e Senha de 4 dígitos
 app.post('/api/login', (req, res) => {
   try {
-    const { pin } = req.body;
-    if (!pin || String(pin).length !== 4) {
-      return res.status(400).json({ error: 'Informe um PIN de 4 dígitos.' });
-    }
-    const conf = db.prepare('SELECT valor FROM config WHERE chave = ?').get('pin_acesso');
-    const pinValido = conf ? conf.valor : '1234';
+    const { usuario, senha } = req.body;
+    const userLimpo = (usuario || '').trim().toLowerCase();
+    const passLimpo = String(senha || '').trim();
 
-    if (String(pin) === String(pinValido)) {
+    const conf = db.prepare('SELECT valor FROM config WHERE chave = ?').get('senha_acesso');
+    const senhaValida = conf ? conf.valor : '3105';
+
+    if (userLimpo === 'giovanni' && passLimpo === senhaValida) {
       return res.json({ success: true, message: 'Acesso autorizado!' });
     } else {
-      return res.status(401).json({ error: 'Senha de 4 dígitos incorreta.' });
+      return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
     }
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -41,17 +41,17 @@ app.post('/api/alterar-pin', (req, res) => {
   try {
     const { pinAtual, novoPin } = req.body;
     if (!novoPin || !/^\d{4}$/.test(String(novoPin))) {
-      return res.status(400).json({ error: 'O novo PIN deve conter exatamente 4 números.' });
+      return res.status(400).json({ error: 'A nova senha deve conter exatamente 4 números.' });
     }
-    const conf = db.prepare('SELECT valor FROM config WHERE chave = ?').get('pin_acesso');
-    const pinValido = conf ? conf.valor : '1234';
+    const conf = db.prepare('SELECT valor FROM config WHERE chave = ?').get('senha_acesso');
+    const senhaValida = conf ? conf.valor : '3105';
 
-    if (String(pinAtual) !== String(pinValido)) {
+    if (String(pinAtual) !== String(senhaValida)) {
       return res.status(401).json({ error: 'Senha atual incorreta.' });
     }
 
     db.prepare('INSERT INTO config (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor')
-      .run('pin_acesso', String(novoPin));
+      .run('senha_acesso', String(novoPin));
     res.json({ success: true, message: 'Senha alterada com sucesso!' });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -42,48 +42,46 @@ module.exports = async (req, res) => {
   const method = req.method;
 
   try {
-    // 0. POST /api/login - Validação de PIN de 4 dígitos
+    // 0. POST /api/login - Validação de Usuário e Senha de 4 dígitos
     if (pathname === '/login' && method === 'POST') {
-      const { pin } = req.body || {};
-      if (!pin || String(pin).length !== 4) {
-        return res.status(400).json({ error: 'Informe um PIN de 4 dígitos.' });
-      }
+      const { usuario, senha } = req.body || {};
+      const userLimpo = (usuario || '').trim().toLowerCase();
+      const passLimpo = String(senha || '').trim();
 
-      // Buscar PIN salvo no Supabase (se existir a tabela config) ou usar padrão '1234'
-      let pinValido = '1234';
+      // Credencial fixa definida pelo usuário ou gravada em config
+      const usuarioValido = 'giovanni';
+      let senhaValida = '3105';
+
       try {
-        const { data: conf } = await supabase.from('config').select('valor').eq('chave', 'pin_acesso').maybeSingle();
-        if (conf && conf.valor) pinValido = conf.valor;
-      } catch (e) {
-        // Fallback para '1234' se tabela config ainda não tiver sido criada
-      }
+        const { data: conf } = await supabase.from('config').select('valor').eq('chave', 'senha_acesso').maybeSingle();
+        if (conf && conf.valor) senhaValida = conf.valor;
+      } catch (e) {}
 
-      if (String(pin) === String(pinValido)) {
+      if (userLimpo === usuarioValido && passLimpo === senhaValida) {
         return res.json({ success: true, message: 'Acesso autorizado!' });
       } else {
-        return res.status(401).json({ error: 'Senha de 4 dígitos incorreta.' });
+        return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
       }
     }
 
-    // POST /api/alterar-pin - Alterar PIN de 4 dígitos
+    // POST /api/alterar-pin - Alterar Senha de 4 dígitos
     if (pathname === '/alterar-pin' && method === 'POST') {
       const { pinAtual, novoPin } = req.body || {};
       if (!novoPin || !/^\d{4}$/.test(String(novoPin))) {
-        return res.status(400).json({ error: 'O novo PIN deve conter exatamente 4 números.' });
+        return res.status(400).json({ error: 'A nova senha deve conter exatamente 4 números.' });
       }
 
-      let pinValido = '1234';
+      let senhaValida = '3105';
       try {
-        const { data: conf } = await supabase.from('config').select('valor').eq('chave', 'pin_acesso').maybeSingle();
-        if (conf && conf.valor) pinValido = conf.valor;
+        const { data: conf } = await supabase.from('config').select('valor').eq('chave', 'senha_acesso').maybeSingle();
+        if (conf && conf.valor) senhaValida = conf.valor;
       } catch (e) {}
 
-      if (String(pinAtual) !== String(pinValido)) {
+      if (String(pinAtual) !== String(senhaValida)) {
         return res.status(401).json({ error: 'Senha atual incorreta.' });
       }
 
-      // Atualizar ou inserir na tabela config
-      await supabase.from('config').upsert([{ chave: 'pin_acesso', valor: String(novoPin) }]);
+      await supabase.from('config').upsert([{ chave: 'senha_acesso', valor: String(novoPin) }]);
       return res.json({ success: true, message: 'Senha alterada com sucesso!' });
     }
 

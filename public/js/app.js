@@ -23,39 +23,37 @@ const app = {
     }
   },
 
-  // 0. Autenticação por PIN
+  // 0. Autenticação por Usuário e Senha de 4 dígitos
   configurarLogin() {
     const loginScreen = document.getElementById('loginScreen');
     const formLogin = document.getElementById('formLogin');
-    const digits = document.querySelectorAll('.pin-digit');
+    const inputUser = document.getElementById('loginUsuario');
+    const inputSenha = document.getElementById('loginSenha');
     const erroMsg = document.getElementById('loginErro');
     const btnSair = document.getElementById('btnSair');
 
-    // Movimentação automática de foco entre os 4 dígitos
-    digits.forEach((digit, index) => {
-      digit.addEventListener('input', (e) => {
-        digit.value = digit.value.replace(/\D/g, '');
-        if (digit.value && index < digits.length - 1) {
-          digits[index + 1].focus();
-        }
+    // Aceitar apenas números na senha
+    if (inputSenha) {
+      inputSenha.addEventListener('input', (e) => {
+        e.target.value = e.target.value.replace(/\D/g, '');
         if (erroMsg) erroMsg.style.display = 'none';
       });
+    }
 
-      digit.addEventListener('keydown', (e) => {
-        if (e.key === 'Backspace' && !digit.value && index > 0) {
-          digits[index - 1].focus();
-        }
+    if (inputUser) {
+      inputUser.addEventListener('input', () => {
+        if (erroMsg) erroMsg.style.display = 'none';
       });
-    });
+    }
 
     formLogin.addEventListener('submit', async (e) => {
       e.preventDefault();
-      let pin = '';
-      digits.forEach(d => pin += d.value);
+      const usuario = inputUser.value.trim();
+      const senha = inputSenha.value.trim();
 
-      if (pin.length !== 4) {
+      if (senha.length !== 4) {
         if (erroMsg) {
-          erroMsg.textContent = 'Digite os 4 números da senha.';
+          erroMsg.textContent = 'A senha deve conter 4 dígitos.';
           erroMsg.style.display = 'block';
         }
         return;
@@ -65,18 +63,18 @@ const app = {
         const res = await fetch('/api/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pin })
+          body: JSON.stringify({ usuario, senha })
         });
         const data = await res.json();
 
         if (!res.ok) {
-          throw new Error(data.error || 'Senha incorreta.');
+          throw new Error(data.error || 'Usuário ou senha incorretos.');
         }
 
         // Sucesso
         sessionStorage.setItem('gestao_logado', 'true');
         loginScreen.style.display = 'none';
-        this.mostrarToast('Acesso liberado com sucesso!');
+        this.mostrarToast('Bem-vindo ao sistema!');
         this.carregarOpcoes().then(() => {
           this.carregarDashboard();
         });
@@ -85,8 +83,8 @@ const app = {
           erroMsg.textContent = err.message;
           erroMsg.style.display = 'block';
         }
-        digits.forEach(d => d.value = '');
-        if (digits[0]) digits[0].focus();
+        inputSenha.value = '';
+        inputSenha.focus();
       }
     });
 
@@ -95,14 +93,14 @@ const app = {
       btnSair.addEventListener('click', (e) => {
         e.preventDefault();
         sessionStorage.removeItem('gestao_logado');
-        digits.forEach(d => d.value = '');
+        if (inputSenha) inputSenha.value = '';
         if (loginScreen) loginScreen.style.display = 'flex';
-        if (digits[0]) digits[0].focus();
+        if (inputUser) inputUser.focus();
         this.mostrarToast('Você saiu do sistema.');
       });
     }
 
-    // Formulário de Alteração de PIN
+    // Formulário de Alteração de Senha
     const formAlterarPin = document.getElementById('formAlterarPin');
     if (formAlterarPin) {
       formAlterarPin.addEventListener('submit', async (e) => {
