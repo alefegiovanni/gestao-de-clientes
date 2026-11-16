@@ -639,18 +639,6 @@ const app = {
         `;
         cardMes.appendChild(tableWrapper);
 
-        // Barra e controles de rolagem interativos com botões
-        const scrollBarControl = document.createElement('div');
-        scrollBarControl.className = 'table-scroll-controller';
-        scrollBarControl.innerHTML = `
-          <button type="button" class="scroll-btn" onclick="app.rolarTabela('${wrapperId}', -300)">◀ Rolar Esquerda</button>
-          <div class="scroll-slider-track">
-            <input type="range" class="scroll-slider" min="0" max="100" value="0" oninput="app.sincronizarScrollSlider('${wrapperId}', this.value)">
-          </div>
-          <button type="button" class="scroll-btn" onclick="app.rolarTabela('${wrapperId}', 300)">Rolar Direita ▶</button>
-        `;
-        cardMes.appendChild(scrollBarControl);
-
         container.appendChild(cardMes);
       });
 

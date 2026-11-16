@@ -378,7 +378,7 @@
           </div>
 
           <div class="table-card">
-            <div class="table-responsive" id="wrapTabClientes">
+            <div class="table-responsive">
               <table class="custom-table">
                 <thead>
                   <tr>
@@ -395,14 +395,6 @@
                   <!-- Linhas preenchidas dinamicamente -->
                 </tbody>
               </table>
-            </div>
-            <!-- Barra e botões de rolagem -->
-            <div class="table-scroll-controller">
-              <button type="button" class="scroll-btn" onclick="app.rolarTabela('wrapTabClientes', -300)">◀ Rolar Esquerda</button>
-              <div class="scroll-slider-track">
-                <input type="range" class="scroll-slider" min="0" max="100" value="0" oninput="app.sincronizarScrollSlider('wrapTabClientes', this.value)">
-              </div>
-              <button type="button" class="scroll-btn" onclick="app.rolarTabela('wrapTabClientes', 300)">Rolar Direita ▶</button>
             </div>
             <div id="emptyClientes" class="empty-state" style="display: none;">
               <p>Nenhum registro de cliente encontrado.</p>
@@ -427,7 +419,7 @@
           </div>
 
           <div class="table-card">
-            <div class="table-responsive" id="wrapTabContratos">
+            <div class="table-responsive">
               <table class="custom-table">
                 <thead>
                   <tr>
@@ -445,14 +437,6 @@
                   <!-- Linhas preenchidas dinamicamente -->
                 </tbody>
               </table>
-            </div>
-            <!-- Barra e botões de rolagem -->
-            <div class="table-scroll-controller">
-              <button type="button" class="scroll-btn" onclick="app.rolarTabela('wrapTabContratos', -300)">◀ Rolar Esquerda</button>
-              <div class="scroll-slider-track">
-                <input type="range" class="scroll-slider" min="0" max="100" value="0" oninput="app.sincronizarScrollSlider('wrapTabContratos', this.value)">
-              </div>
-              <button type="button" class="scroll-btn" onclick="app.rolarTabela('wrapTabContratos', 300)">Rolar Direita ▶</button>
             </div>
             <div id="emptyContratos" class="empty-state" style="display: none;">
               <p>Nenhum contrato cadastrado ou localizado.</p>
