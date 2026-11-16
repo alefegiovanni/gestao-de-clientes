@@ -456,6 +456,14 @@ const app = {
         `;
         tbody.appendChild(tr);
       });
+
+      const tableCard = document.querySelector('#section-clientes .table-card');
+      const tableWrapper = document.querySelector('#section-clientes .table-responsive');
+      const barraExistente = tableCard.querySelector('.custom-scrollbar-bar');
+      if (barraExistente) barraExistente.remove();
+      if (lista.length > 0) {
+        tableCard.appendChild(this.criarBarraRolagemFisica(tableWrapper));
+      }
     } catch (err) {
       console.error('Erro ao carregar clientes:', err);
     }
@@ -496,6 +504,14 @@ const app = {
         `;
         tbody.appendChild(tr);
       });
+
+      const tableCard = document.querySelector('#section-contratos .table-card');
+      const tableWrapper = document.querySelector('#section-contratos .table-responsive');
+      const barraExistente = tableCard.querySelector('.custom-scrollbar-bar');
+      if (barraExistente) barraExistente.remove();
+      if (lista.length > 0) {
+        tableCard.appendChild(this.criarBarraRolagemFisica(tableWrapper));
+      }
     } catch (err) {
       console.error('Erro ao carregar contratos:', err);
     }
@@ -638,6 +654,10 @@ const app = {
           </table>
         `;
         cardMes.appendChild(tableWrapper);
+
+        // Barra de rolagem HTML física sempre visível para mouse externo
+        const scrollBarEl = this.criarBarraRolagemFisica(tableWrapper);
+        cardMes.appendChild(scrollBarEl);
 
         container.appendChild(cardMes);
       });

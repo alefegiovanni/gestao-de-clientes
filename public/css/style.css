@@ -374,27 +374,71 @@ html, body {
   scrollbar-color: #15803d #e2e8f0;
 }
 
-/* Barra de rolagem FÍSICA FIXA em cada tabela, grossa (14px) para clicar com o mouse */
-.table-responsive::-webkit-scrollbar {
-  height: 14px !important;
-  background-color: #e2e8f0 !important;
-  display: block !important;
+/* Barra de Navegação Horizontal FÍSICA E VISÍVEL EM TODOS OS SISTEMAS (Mac, Windows, Safari, Chrome) */
+.custom-scrollbar-bar {
+  display: flex;
+  align-items: center;
+  background-color: #f1f5f9;
+  border-top: 2px solid #e2e8f0;
+  padding: 8px 14px;
+  gap: 12px;
 }
 
-.table-responsive::-webkit-scrollbar-track {
-  background: #e2e8f0 !important;
-  border-radius: 7px;
+.custom-scrollbar-track {
+  flex: 1;
+  height: 18px;
+  background-color: #e2e8f0;
+  border-radius: 9px;
+  position: relative;
+  cursor: pointer;
 }
 
-.table-responsive::-webkit-scrollbar-thumb {
-  background-color: #15803d !important; /* Verde Porto bem visível */
+.custom-scrollbar-thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  width: 25%;
+  min-width: 60px;
+  background-color: #15803d; /* Verde Porto */
   border-radius: 7px;
-  border: 2px solid #e2e8f0 !important;
   cursor: grab;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  transition: background-color 0.15s;
 }
 
-.table-responsive::-webkit-scrollbar-thumb:hover {
-  background-color: #166534 !important;
+.custom-scrollbar-thumb:hover {
+  background-color: #166534;
+}
+
+.custom-scrollbar-thumb:active {
+  cursor: grabbing;
+  background-color: #14532d;
+}
+
+.btn-scroll-arrow {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  height: 28px;
+}
+
+.btn-scroll-arrow:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.btn-scroll-arrow:active {
+  transform: scale(0.95);
 }
 
 .custom-table {
