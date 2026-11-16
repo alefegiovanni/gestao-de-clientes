@@ -9,6 +9,7 @@ const app = {
     this.configurarMascaraMoeda();
     this.configurarDataAutomatica();
     this.configurarFormulario();
+    this.configurarModalEdicao();
     this.configurarPesquisas();
     this.configurarFiltrosPeriodo();
     this.configurarConfiguracoes();
@@ -420,6 +421,11 @@ const app = {
           <td>${item.grupo_numero}</td>
           <td><span class="badge-money">${this.formatarMoeda(item.valor_credito)}</span></td>
           <td>${this.formatarDataBR(item.data_venda)}</td>
+          <td style="text-align: center;">
+            <button class="btn-action" onclick="app.abrirModalEdicao(${JSON.stringify(item).replace(/"/g, '&quot;')})">
+              ✏️ Editar
+            </button>
+          </td>
         `;
         tbody.appendChild(tr);
       });
@@ -455,6 +461,11 @@ const app = {
           <td>${item.grupo_numero}</td>
           <td>${this.formatarDataBR(item.data_venda)}</td>
           <td><span class="badge-tag">${item.forma_pagamento}</span></td>
+          <td style="text-align: center;">
+            <button class="btn-action" onclick="app.abrirModalEdicao(${JSON.stringify(item).replace(/"/g, '&quot;')})">
+              ✏️ Editar
+            </button>
+          </td>
         `;
         tbody.appendChild(tr);
       });
@@ -526,6 +537,11 @@ const app = {
           <td>${this.formatarDataBR(item.data_venda)}</td>
           <td><span class="badge-tag">${item.contrato_numero}</span></td>
           <td><span class="badge-tag">${item.forma_captacao}</span></td>
+          <td style="text-align: center;">
+            <button class="btn-action" onclick="app.abrirModalEdicao(${JSON.stringify(item).replace(/"/g, '&quot;')})">
+              ✏️ Editar
+            </button>
+          </td>
         `;
         tbody.appendChild(tr);
       });
@@ -639,6 +655,165 @@ const app = {
       li.textContent = `• ${c.nome}`;
       listaCap.appendChild(li);
     });
+  },
+
+  // MODAL DE EDIÇÃO DE VENDAS
+  configurarModalEdicao() {
+    const modal = document.getElementById('modalEdicao');
+    const form = document.getElementById('formEdicaoVenda');
+    const btnFechar = document.getElementById('btnFecharModal');
+    const btnCancelar = document.getElementById('btnCancelarEdicao');
+    const btnExcluir = document.getElementById('btnExcluirVenda');
+    const inputData = document.getElementById('editDataVenda');
+    const inputMes = document.getElementById('editMesVenda');
+    const inputValor = document.getElementById('editValorCredito');
+
+    const fechar = () => { modal.style.display = 'none'; };
+    btnFechar.addEventListener('click', fechar);
+    btnCancelar.addEventListener('click', fechar);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) fechar();
+    });
+
+    // Atualizar competência no edit
+    inputData.addEventListener('change', () => {
+      if (inputData.value) {
+        const partes = inputData.value.split('-');
+        inputMes.value = this.formatarCompetenciaBR(`${partes[0]}-${partes[1]}`);
+      }
+    });
+
+    // Máscara monetária no edit
+    inputValor.addEventListener('input', (e) => {
+      let value = e.target.value.replace(/\D/g, '');
+      if (!value) {
+        e.target.value = '';
+        return;
+      }
+      const valorNum = (parseInt(value, 10) / 100).toFixed(2);
+      e.target.value = Number(valorNum).toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL'
+      });
+    });
+
+    // Submeter edição
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const vendaId = document.getElementById('editVendaId').value;
+      const dataVenda = inputData.value;
+      const nomeCliente = document.getElementById('editNomeCliente').value.trim();
+      const valorStr = inputValor.value;
+      const numeroContrato = document.getElementById('editNumeroContrato').value.trim();
+      const numeroGrupo = document.getElementById('editNumeroGrupo').value.trim();
+      const numeroCota = document.getElementById('editNumeroCota').value.trim();
+      const formaPagamentoId = document.getElementById('editFormaPagamento').value;
+      const formaCaptacaoId = document.getElementById('editFormaCaptacao').value;
+
+      let valorLimpo = valorStr.replace(/[^\d]/g, '');
+      const valorCredito = parseFloat(valorLimpo) / 100;
+
+      if (!valorCredito || isNaN(valorCredito) || valorCredito <= 0) {
+        this.mostrarToast('Por favor, informe um valor de crédito válido.', 'erro');
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/vendas/${vendaId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            dataVenda,
+            nomeCliente,
+            valorCredito,
+            numeroContrato,
+            numeroGrupo,
+            numeroCota,
+            formaPagamentoId: Number(formaPagamentoId),
+            formaCaptacaoId: Number(formaCaptacaoId)
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erro ao atualizar.');
+
+        this.mostrarToast('Registro atualizado com sucesso!');
+        fechar();
+
+        // Recarregar tela atual
+        if (this.secaoAtual === 'clientes') this.carregarClientes();
+        if (this.secaoAtual === 'contratos') this.carregarContratos();
+        if (this.secaoAtual === 'vendas-mes') this.carregarVendasMes();
+        this.carregarDashboard();
+      } catch (err) {
+        this.mostrarToast(err.message, 'erro');
+      }
+    });
+
+    // Excluir registro
+    btnExcluir.addEventListener('click', async () => {
+      const vendaId = document.getElementById('editVendaId').value;
+      if (!confirm('Tem certeza que deseja excluir esta venda do sistema?')) return;
+
+      try {
+        const res = await fetch(`/api/vendas/${vendaId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erro ao excluir.');
+
+        this.mostrarToast('Registro excluído com sucesso!');
+        fechar();
+
+        if (this.secaoAtual === 'clientes') this.carregarClientes();
+        if (this.secaoAtual === 'contratos') this.carregarContratos();
+        if (this.secaoAtual === 'vendas-mes') this.carregarVendasMes();
+        this.carregarDashboard();
+      } catch (err) {
+        this.mostrarToast(err.message, 'erro');
+      }
+    });
+  },
+
+  abrirModalEdicao(item) {
+    const modal = document.getElementById('modalEdicao');
+    document.getElementById('editVendaId').value = item.venda_id;
+    document.getElementById('editDataVenda').value = item.data_venda;
+    
+    if (item.data_venda) {
+      const partes = item.data_venda.split('-');
+      document.getElementById('editMesVenda').value = this.formatarCompetenciaBR(`${partes[0]}-${partes[1]}`);
+    }
+
+    document.getElementById('editNomeCliente').value = item.cliente_nome || '';
+    document.getElementById('editValorCredito').value = Number(item.valor_credito || 0).toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    });
+    document.getElementById('editNumeroContrato').value = item.contrato_numero || '';
+    document.getElementById('editNumeroGrupo').value = item.grupo_numero || '';
+    document.getElementById('editNumeroCota').value = item.cota_numero || '';
+
+    // Preencher selects do modal
+    const selPag = document.getElementById('editFormaPagamento');
+    selPag.innerHTML = '';
+    this.opcoes.pagamentos.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.nome;
+      if (item.pagamento_id == p.id || item.forma_pagamento == p.nome) opt.selected = true;
+      selPag.appendChild(opt);
+    });
+
+    const selCap = document.getElementById('editFormaCaptacao');
+    selCap.innerHTML = '';
+    this.opcoes.captacoes.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = c.nome;
+      if (item.captacao_id == c.id || item.forma_captacao == c.nome) opt.selected = true;
+      selCap.appendChild(opt);
+    });
+
+    modal.style.display = 'flex';
   }
 };
 

@@ -258,6 +258,118 @@ app.post('/api/vendas', (req, res) => {
   }
 });
 
+// ATUALIZAR/EDITAR VENDA
+app.put('/api/vendas/:id', (req, res) => {
+  try {
+    const vendaId = req.params.id;
+    const {
+      nomeCliente,
+      valorCredito,
+      formaPagamentoId,
+      numeroCota,
+      numeroGrupo,
+      dataVenda,
+      numeroContrato,
+      formaCaptacaoId
+    } = req.body;
+
+    if (!nomeCliente || !nomeCliente.trim()) return res.status(400).json({ error: 'O nome do cliente é obrigatório.' });
+    const valCreditoNum = parseFloat(valorCredito);
+    if (isNaN(valCreditoNum) || valCreditoNum <= 0) return res.status(400).json({ error: 'O valor do crédito deve ser positivo.' });
+    if (!formaPagamentoId) return res.status(400).json({ error: 'Selecione a forma de pagamento.' });
+    if (!numeroCota || !numeroCota.trim()) return res.status(400).json({ error: 'O número da cota é obrigatório.' });
+    if (!numeroGrupo || !numeroGrupo.trim()) return res.status(400).json({ error: 'O número do grupo é obrigatório.' });
+    if (!dataVenda || !/^\d{4}-\d{2}-\d{2}$/.test(dataVenda)) return res.status(400).json({ error: 'Data de venda inválida.' });
+    if (!numeroContrato || !numeroContrato.trim()) return res.status(400).json({ error: 'O número do contrato é obrigatório.' });
+    if (!formaCaptacaoId) return res.status(400).json({ error: 'Selecione a forma de captação.' });
+
+    const contratoNormalizado = numeroContrato.trim();
+    const cotaNormalizada = numeroCota.trim();
+    const grupoNormalizado = numeroGrupo.trim();
+    const clienteNormalizado = nomeCliente.trim();
+    const mesAnoCompetencia = extrairCompetencia(dataVenda);
+
+    const updateTransaction = db.transaction(() => {
+      const vendaAtual = db.prepare('SELECT id, contrato_id FROM vendas WHERE id = ?').get(vendaId);
+      if (!vendaAtual) throw new Error('Venda não encontrada.');
+
+      // Checar se contrato colide com OUTRO contrato
+      const contratoExistente = db.prepare('SELECT id FROM contratos WHERE numero = ? AND id != ?').get(contratoNormalizado, vendaAtual.contrato_id);
+      if (contratoExistente) {
+        throw new Error(`O contrato "${contratoNormalizado}" já pertence a outro registro.`);
+      }
+
+      // Cliente
+      let cliente = db.prepare('SELECT id FROM clientes WHERE nome = ? COLLATE NOCASE').get(clienteNormalizado);
+      if (!cliente) {
+        const resCliente = db.prepare('INSERT INTO clientes (nome) VALUES (?)').run(clienteNormalizado);
+        cliente = { id: resCliente.lastInsertRowid };
+      }
+
+      // Grupo
+      let grupo = db.prepare('SELECT id FROM grupos WHERE numero = ?').get(grupoNormalizado);
+      if (!grupo) {
+        const resGrupo = db.prepare('INSERT INTO grupos (numero) VALUES (?)').run(grupoNormalizado);
+        grupo = { id: resGrupo.lastInsertRowid };
+      }
+
+      // Cota
+      let cota = db.prepare('SELECT id FROM cotas WHERE grupo_id = ? AND numero = ?').get(grupo.id, cotaNormalizada);
+      if (!cota) {
+        const resCota = db.prepare('INSERT INTO cotas (grupo_id, numero) VALUES (?, ?)').run(grupo.id, cotaNormalizada);
+        cota = { id: resCota.lastInsertRowid };
+      }
+
+      // Atualizar Contrato
+      db.prepare('UPDATE contratos SET numero = ?, cliente_id = ? WHERE id = ?').run(contratoNormalizado, cliente.id, vendaAtual.contrato_id);
+
+      // Atualizar Venda
+      db.prepare(`
+        UPDATE vendas SET
+          cliente_id = ?,
+          cota_id = ?,
+          pagamento_id = ?,
+          captacao_id = ?,
+          valor_credito = ?,
+          data_venda = ?,
+          mes_ano_competencia = ?
+        WHERE id = ?
+      `).run(
+        cliente.id,
+        cota.id,
+        formaPagamentoId,
+        formaCaptacaoId,
+        valCreditoNum,
+        dataVenda,
+        mesAnoCompetencia,
+        vendaId
+      );
+    });
+
+    updateTransaction();
+    res.json({ success: true, message: 'Venda atualizada com sucesso!' });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// EXCLUIR VENDA
+app.delete('/api/vendas/:id', (req, res) => {
+  try {
+    const vendaId = req.params.id;
+    const venda = db.prepare('SELECT contrato_id FROM vendas WHERE id = ?').get(vendaId);
+    if (!venda) return res.status(404).json({ error: 'Venda não encontrada' });
+
+    db.prepare('DELETE FROM vendas WHERE id = ?').run(vendaId);
+    if (venda.contrato_id) {
+      db.prepare('DELETE FROM contratos WHERE id = ?').run(venda.contrato_id);
+    }
+    res.json({ success: true, message: 'Venda excluída com sucesso!' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 4. CLIENTES - Listagem com busca por nome do cliente ou número do contrato
 app.get('/api/clientes', (req, res) => {
   try {

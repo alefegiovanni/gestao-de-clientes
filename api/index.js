@@ -293,6 +293,164 @@ module.exports = async (req, res) => {
       });
     }
 
+    // PUT /api/vendas/:id - Atualizar/Editar uma venda existente
+    const matchPutVenda = pathname.match(/^\/vendas\/(\d+)$/);
+    if (matchPutVenda && method === 'PUT') {
+      const vendaId = parseInt(matchPutVenda[1], 10);
+      const {
+        nomeCliente,
+        valorCredito,
+        formaPagamentoId,
+        numeroCota,
+        numeroGrupo,
+        dataVenda,
+        numeroContrato,
+        formaCaptacaoId
+      } = req.body || {};
+
+      if (!nomeCliente || !nomeCliente.trim()) return res.status(400).json({ error: 'O nome do cliente é obrigatório.' });
+      const valCreditoNum = parseFloat(valorCredito);
+      if (isNaN(valCreditoNum) || valCreditoNum <= 0) return res.status(400).json({ error: 'O valor do crédito deve ser positivo.' });
+      if (!formaPagamentoId) return res.status(400).json({ error: 'Selecione a forma de pagamento.' });
+      if (!numeroCota || !numeroCota.trim()) return res.status(400).json({ error: 'O número da cota é obrigatório.' });
+      if (!numeroGrupo || !numeroGrupo.trim()) return res.status(400).json({ error: 'O número do grupo é obrigatório.' });
+      if (!dataVenda || !/^\d{4}-\d{2}-\d{2}$/.test(dataVenda)) return res.status(400).json({ error: 'Data de venda inválida.' });
+      if (!numeroContrato || !numeroContrato.trim()) return res.status(400).json({ error: 'O número do contrato é obrigatório.' });
+      if (!formaCaptacaoId) return res.status(400).json({ error: 'Selecione a forma de captação.' });
+
+      const contratoNorm = numeroContrato.trim();
+      const cotaNorm = numeroCota.trim();
+      const grupoNorm = numeroGrupo.trim();
+      const clienteNorm = nomeCliente.trim();
+      const mesAnoCompetencia = extrairCompetencia(dataVenda);
+
+      // Obter venda atual
+      const { data: vendaAtual, error: errVendaAtual } = await supabase
+        .from('vendas')
+        .select('id, contrato_id, cliente_id, cota_id')
+        .eq('id', vendaId)
+        .maybeSingle();
+
+      if (errVendaAtual || !vendaAtual) {
+        return res.status(404).json({ error: 'Venda não encontrada.' });
+      }
+
+      // Verificar se número de contrato colide com OUTRO contrato
+      const { data: ctExistente } = await supabase
+        .from('contratos')
+        .select('id')
+        .eq('numero', contratoNorm)
+        .neq('id', vendaAtual.contrato_id)
+        .maybeSingle();
+
+      if (ctExistente) {
+        return res.status(400).json({ 
+          error: `O contrato número "${contratoNorm}" já pertence a outro registro.` 
+        });
+      }
+
+      // 1. Cliente
+      let clienteId;
+      const { data: cliExistente } = await supabase
+        .from('clientes')
+        .select('id')
+        .ilike('nome', clienteNorm)
+        .maybeSingle();
+
+      if (cliExistente) {
+        clienteId = cliExistente.id;
+      } else {
+        const { data: novoCli, error: errCli } = await supabase
+          .from('clientes')
+          .insert([{ nome: clienteNorm }])
+          .select('id')
+          .single();
+        if (errCli) throw errCli;
+        clienteId = novoCli.id;
+      }
+
+      // 2. Grupo
+      let grupoId;
+      const { data: grpExistente } = await supabase
+        .from('grupos')
+        .select('id')
+        .eq('numero', grupoNorm)
+        .maybeSingle();
+
+      if (grpExistente) {
+        grupoId = grpExistente.id;
+      } else {
+        const { data: novoGrp, error: errGrp } = await supabase
+          .from('grupos')
+          .insert([{ numero: grupoNorm }])
+          .select('id')
+          .single();
+        if (errGrp) throw errGrp;
+        grupoId = novoGrp.id;
+      }
+
+      // 3. Cota
+      let cotaId;
+      const { data: cotaExistente } = await supabase
+        .from('cotas')
+        .select('id')
+        .eq('grupo_id', grupoId)
+        .eq('numero', cotaNorm)
+        .maybeSingle();
+
+      if (cotaExistente) {
+        cotaId = cotaExistente.id;
+      } else {
+        const { data: novaCota, error: errCota } = await supabase
+          .from('cotas')
+          .insert([{ grupo_id: grupoId, numero: cotaNorm }])
+          .select('id')
+          .single();
+        if (errCota) throw errCota;
+        cotaId = novaCota.id;
+      }
+
+      // 4. Atualizar Contrato
+      const { error: errUpdCt } = await supabase
+        .from('contratos')
+        .update({ numero: contratoNorm, cliente_id: clienteId })
+        .eq('id', vendaAtual.contrato_id);
+      if (errUpdCt) throw errUpdCt;
+
+      // 5. Atualizar Venda
+      const { error: errUpdVenda } = await supabase
+        .from('vendas')
+        .update({
+          cliente_id: clienteId,
+          cota_id: cotaId,
+          pagamento_id: formaPagamentoId,
+          captacao_id: formaCaptacaoId,
+          valor_credito: valCreditoNum,
+          data_venda: dataVenda,
+          mes_ano_competencia: mesAnoCompetencia
+        })
+        .eq('id', vendaId);
+      if (errUpdVenda) throw errUpdVenda;
+
+      return res.json({ success: true, message: 'Venda atualizada com sucesso!' });
+    }
+
+    // DELETE /api/vendas/:id - Excluir venda
+    const matchDelVenda = pathname.match(/^\/vendas\/(\d+)$/);
+    if (matchDelVenda && method === 'DELETE') {
+      const vendaId = parseInt(matchDelVenda[1], 10);
+      const { data: vendaAtual } = await supabase.from('vendas').select('contrato_id').eq('id', vendaId).maybeSingle();
+      
+      const { error: errDelVenda } = await supabase.from('vendas').delete().eq('id', vendaId);
+      if (errDelVenda) throw errDelVenda;
+
+      if (vendaAtual && vendaAtual.contrato_id) {
+        await supabase.from('contratos').delete().eq('id', vendaAtual.contrato_id);
+      }
+
+      return res.json({ success: true, message: 'Venda excluída com sucesso!' });
+    }
+
     // 4. GET /api/clientes
     if (pathname === '/clientes' && method === 'GET') {
       const busca = url.searchParams.get('busca') || '';
@@ -302,6 +460,8 @@ module.exports = async (req, res) => {
           id,
           valor_credito,
           data_venda,
+          pagamento_id,
+          captacao_id,
           clientes!inner (nome),
           contratos!inner (numero),
           cotas!inner (numero, grupos!inner (numero))
@@ -317,7 +477,9 @@ module.exports = async (req, res) => {
         cota_numero: v.cotas?.numero,
         grupo_numero: v.cotas?.grupos?.numero,
         valor_credito: v.valor_credito,
-        data_venda: v.data_venda
+        data_venda: v.data_venda,
+        pagamento_id: v.pagamento_id,
+        captacao_id: v.captacao_id
       }));
 
       if (busca && busca.trim()) {
@@ -337,8 +499,11 @@ module.exports = async (req, res) => {
       const { data, error } = await supabase
         .from('vendas')
         .select(`
+          id,
           valor_credito,
           data_venda,
+          pagamento_id,
+          captacao_id,
           contratos!inner (numero),
           clientes!inner (nome),
           cotas!inner (numero, grupos!inner (numero)),
@@ -349,13 +514,16 @@ module.exports = async (req, res) => {
       if (error) throw error;
 
       let formatados = (data || []).map(v => ({
+        venda_id: v.id,
         contrato_numero: v.contratos?.numero,
         cliente_nome: v.clientes?.nome,
         valor_credito: v.valor_credito,
         cota_numero: v.cotas?.numero,
         grupo_numero: v.cotas?.grupos?.numero,
         data_venda: v.data_venda,
-        forma_pagamento: v.pagamentos?.nome
+        forma_pagamento: v.pagamentos?.nome,
+        pagamento_id: v.pagamento_id,
+        captacao_id: v.captacao_id
       }));
 
       if (busca && busca.trim()) {
@@ -409,6 +577,8 @@ module.exports = async (req, res) => {
           valor_credito,
           data_venda,
           mes_ano_competencia,
+          pagamento_id,
+          captacao_id,
           clientes!inner (nome),
           contratos!inner (numero),
           cotas!inner (numero, grupos!inner (numero)),
@@ -429,7 +599,9 @@ module.exports = async (req, res) => {
         grupo_numero: v.cotas?.grupos?.numero,
         data_venda: v.data_venda,
         contrato_numero: v.contratos?.numero,
-        forma_captacao: v.captacoes?.nome
+        forma_captacao: v.captacoes?.nome,
+        pagamento_id: v.pagamento_id,
+        captacao_id: v.captacao_id
       }));
 
       return res.json({
