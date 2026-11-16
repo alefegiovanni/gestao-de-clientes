@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Gestão de Vendas de Consórcios</title>
+  <!-- Google Fonts Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <div class="overlay" id="sidebarOverlay"></div>
+
+  <!-- Mobile Topbar -->
+  <header class="mobile-header">
+    <div class="brand-logo">
+      <div class="brand-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-title">Consórcios</div>
+        <div class="brand-subtitle">Gestão de Vendas</div>
+      </div>
+    </div>
+    <button class="mobile-menu-btn" id="mobileMenuToggle" aria-label="Abrir Menu">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="3" y1="12" x2="21" y2="12"></line>
+        <line x1="3" y1="6" x2="21" y2="6"></line>
+        <line x1="3" y1="18" x2="21" y2="18"></line>
+      </svg>
+    </button>
+  </header>
+
+  <div class="app-container">
+    <!-- Sidebar Menu Lateral -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand-logo">
+          <div class="brand-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+          </div>
+          <div>
+            <div class="brand-title">Gestão de Vendas</div>
+            <div class="brand-subtitle">Porto Consórcios</div>
+          </div>
+        </div>
+      </div>
+
+      <ul class="sidebar-menu">
+        <li>
+          <a class="nav-link active" data-section="dashboard">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <rect x="3" y="3" width="7" height="9" rx="1"></rect>
+              <rect x="14" y="3" width="7" height="5" rx="1"></rect>
+              <rect x="14" y="12" width="7" height="9" rx="1"></rect>
+              <rect x="3" y="16" width="7" height="5" rx="1"></rect>
+            </svg>
+            <span>Dashboard</span>
+          </a>
+        </li>
+        <li>
+          <a class="nav-link" data-section="nova-venda">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="16"></line>
+              <line x1="8" y1="12" x2="16" y2="12"></line>
+            </svg>
+            <span>Nova Venda</span>
+          </a>
+        </li>
+        <li>
+          <a class="nav-link" data-section="clientes">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+            <span>Clientes</span>
+          </a>
+        </li>
+        <li>
+          <a class="nav-link" data-section="contratos">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+              <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
+            <span>Contratos</span>
+          </a>
+        </li>
+        <li>
+          <a class="nav-link" data-section="relatorios">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <line x1="18" y1="20" x2="18" y2="10"></line>
+              <line x1="12" y1="20" x2="12" y2="4"></line>
+              <line x1="6" y1="20" x2="6" y2="14"></line>
+            </svg>
+            <span>Relatórios</span>
+          </a>
+        </li>
+        <li>
+          <a class="nav-link" data-section="vendas-mes">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            <span>Vendas por Mês</span>
+          </a>
+        </li>
+        <li>
+          <a class="nav-link" data-section="configuracoes">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+            <span>Configurações</span>
+          </a>
+        </li>
+      </ul>
+
+      <div class="sidebar-footer">
+        Sistema de Consórcios v1.0
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <div class="main-wrapper">
+      <main class="main-content">
+
+        <!-- SEÇÃO 1: DASHBOARD -->
+        <section id="section-dashboard" class="app-section active">
+          <div class="page-header">
+            <h1 class="page-title">Dashboard</h1>
+            <p class="page-description">Visão geral do desempenho e indicadores de vendas</p>
+          </div>
+
+          <!-- 4 Cards Indicadores -->
+          <div class="cards-grid">
+            <!-- Card 1: Vendas no mês -->
+            <div class="indicator-card">
+              <div class="indicator-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <line x1="12" y1="1" x2="12" y2="23"></line>
+                  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                </svg>
+              </div>
+              <div class="indicator-info">
+                <span class="indicator-label">Vendas no Mês</span>
+                <span class="indicator-value" id="cardVendasMes">R$ 0,00</span>
+                <span class="indicator-sub" id="cardMesReferencia">Mês Atual</span>
+              </div>
+            </div>
+
+            <!-- Card 2: Quantidade de vendas -->
+            <div class="indicator-card">
+              <div class="indicator-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+                  <line x1="3" y1="6" x2="21" y2="6"></line>
+                  <path d="M16 10a4 4 0 0 1-8 0"></path>
+                </svg>
+              </div>
+              <div class="indicator-info">
+                <span class="indicator-label">Quantidade de Vendas</span>
+                <span class="indicator-value" id="cardQtdVendas">0</span>
+                <span class="indicator-sub">Total registradas</span>
+              </div>
+            </div>
+
+            <!-- Card 3: Ticket Médio -->
+            <div class="indicator-card">
+              <div class="indicator-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                </svg>
+              </div>
+              <div class="indicator-info">
+                <span class="indicator-label">Ticket Médio</span>
+                <span class="indicator-value" id="cardTicketMedio">R$ 0,00</span>
+                <span class="indicator-sub">Valor médio por crédito</span>
+              </div>
+            </div>
+
+            <!-- Card 4: Clientes Cadastrados -->
+            <div class="indicator-card">
+              <div class="indicator-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                </svg>
+              </div>
+              <div class="indicator-info">
+                <span class="indicator-label">Clientes Cadastrados</span>
+                <span class="indicator-value" id="cardQtdClientes">0</span>
+                <span class="indicator-sub">Base ativa</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Acesso Rápido -->
+          <div class="table-card" style="padding: 24px;">
+            <h3 style="font-size: 1.1rem; margin-bottom: 8px;">Bem-vindo ao Sistema de Vendas de Consórcios Porto</h3>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 18px;">
+              Utilize o menu lateral para navegar entre o cadastro de novas vendas, acompanhamento de clientes, contratos e relatórios oficiais.
+            </p>
+            <button class="btn btn-primary" onclick="app.navegarPara('nova-venda')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="16"></line>
+                <line x1="8" y1="12" x2="16" y2="12"></line>
+              </svg>
+              Cadastrar Nova Venda
+            </button>
+          </div>
+        </section>
+
+        <!-- SEÇÃO 2: NOVA VENDA -->
+        <section id="section-nova-venda" class="app-section">
+          <div class="page-header">
+            <h1 class="page-title">Nova Venda</h1>
+            <p class="page-description">Cadastre uma nova venda de consórcio preenchendo as informações abaixo</p>
+          </div>
+
+          <div class="form-card">
+            <form id="formVenda" autocomplete="off">
+              <div class="form-grid">
+                
+                <!-- 1. Data da Venda -->
+                <div class="form-group">
+                  <label class="form-label" for="campoDataVenda">Data da Venda <span class="req">*</span></label>
+                  <input type="date" id="campoDataVenda" class="form-input" required>
+                  <span class="form-help">Formato brasileiro padrão (DD/MM/AAAA)</span>
+                </div>
+
+                <!-- 2. Mês da Venda (Identificado Automaticamente) -->
+                <div class="form-group">
+                  <label class="form-label" for="campoMesVenda">Mês da Venda (Competência)</label>
+                  <input type="text" id="campoMesVenda" class="form-input" readonly placeholder="Calculado pela data...">
+                  <span class="form-help">Identificado automaticamente pela data da venda</span>
+                </div>
+
+                <!-- 3. Nome do Cliente -->
+                <div class="form-group col-span-2">
+                  <label class="form-label" for="campoNomeCliente">Nome do Cliente <span class="req">*</span></label>
+                  <input type="text" id="campoNomeCliente" class="form-input" placeholder="Nome completo do cliente" required>
+                </div>
+
+                <!-- 4. Valor do Crédito -->
+                <div class="form-group">
+                  <label class="form-label" for="campoValorCredito">Valor do Crédito <span class="req">*</span></label>
+                  <input type="text" id="campoValorCredito" class="form-input" placeholder="R$ 0,00" required>
+                  <span class="form-help">Formato monetário brasileiro</span>
+                </div>
+
+                <!-- 5. Número do Contrato -->
+                <div class="form-group">
+                  <label class="form-label" for="campoNumeroContrato">Número do Contrato <span class="req">*</span></label>
+                  <input type="text" id="campoNumeroContrato" class="form-input" placeholder="Ex: 1045829" required>
+                  <span class="form-help">Registro único (evita duplicidade)</span>
+                </div>
+
+                <!-- 6. Número do Grupo -->
+                <div class="form-group">
+                  <label class="form-label" for="campoNumeroGrupo">Número do Grupo <span class="req">*</span></label>
+                  <input type="text" id="campoNumeroGrupo" class="form-input" placeholder="Ex: 5040" required>
+                </div>
+
+                <!-- 7. Número da Cota -->
+                <div class="form-group">
+                  <label class="form-label" for="campoNumeroCota">Número da Cota <span class="req">*</span></label>
+                  <input type="text" id="campoNumeroCota" class="form-input" placeholder="Ex: 128" required>
+                </div>
+
+                <!-- 8. Forma de Pagamento -->
+                <div class="form-group">
+                  <label class="form-label" for="campoFormaPagamento">Forma de Pagamento <span class="req">*</span></label>
+                  <select id="campoFormaPagamento" class="form-select" required>
+                    <option value="">Selecione...</option>
+                  </select>
+                </div>
+
+                <!-- 9. Forma de Captação -->
+                <div class="form-group">
+                  <label class="form-label" for="campoFormaCaptacao">Forma de Captação <span class="req">*</span></label>
+                  <select id="campoFormaCaptacao" class="form-select" required>
+                    <option value="">Selecione...</option>
+                  </select>
+                </div>
+
+              </div>
+
+              <div class="form-actions">
+                <button type="reset" class="btn btn-secondary">Limpar</button>
+                <button type="submit" class="btn btn-primary" id="btnSalvarVenda">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                    <polyline points="7 3 7 8 15 8"></polyline>
+                  </svg>
+                  Salvar Venda
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <!-- SEÇÃO 3: CLIENTES -->
+        <section id="section-clientes" class="app-section">
+          <div class="page-header">
+            <h1 class="page-title">Clientes</h1>
+            <p class="page-description">Visualização dos clientes cadastrados por meio das vendas</p>
+          </div>
+
+          <!-- Pesquisa de Registros (Nome do cliente ou Número do contrato) -->
+          <div class="search-container">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="buscaClientes" class="search-input" placeholder="Pesquisar pelo nome do cliente ou número do contrato...">
+          </div>
+
+          <div class="table-card">
+            <div class="table-responsive">
+              <table class="custom-table">
+                <thead>
+                  <tr>
+                    <th>Nome do Cliente</th>
+                    <th>Número do Contrato</th>
+                    <th>Número da Cota</th>
+                    <th>Número do Grupo</th>
+                    <th>Valor do Crédito</th>
+                    <th>Data da Venda</th>
+                  </tr>
+                </thead>
+                <tbody id="tabelaClientesCorpo">
+                  <!-- Linhas preenchidas dinamicamente -->
+                </tbody>
+              </table>
+            </div>
+            <div id="emptyClientes" class="empty-state" style="display: none;">
+              <p>Nenhum registro de cliente encontrado.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- SEÇÃO 4: CONTRATOS -->
+        <section id="section-contratos" class="app-section">
+          <div class="page-header">
+            <h1 class="page-title">Contratos</h1>
+            <p class="page-description">Consulta dos contratos cadastrados no sistema</p>
+          </div>
+
+          <!-- Pesquisa de Registros (Nome do cliente ou Número do contrato) -->
+          <div class="search-container">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="buscaContratos" class="search-input" placeholder="Pesquisar pelo número do contrato ou nome do cliente...">
+          </div>
+
+          <div class="table-card">
+            <div class="table-responsive">
+              <table class="custom-table">
+                <thead>
+                  <tr>
+                    <th>Número do Contrato</th>
+                    <th>Nome do Cliente</th>
+                    <th>Valor do Crédito</th>
+                    <th>Número da Cota</th>
+                    <th>Número do Grupo</th>
+                    <th>Data da Venda</th>
+                    <th>Forma de Pagamento</th>
+                  </tr>
+                </thead>
+                <tbody id="tabelaContratosCorpo">
+                  <!-- Linhas preenchidas dinamicamente -->
+                </tbody>
+              </table>
+            </div>
+            <div id="emptyContratos" class="empty-state" style="display: none;">
+              <p>Nenhum contrato cadastrado ou localizado.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- SEÇÃO 5: RELATÓRIOS -->
+        <section id="section-relatorios" class="app-section">
+          <div class="page-header">
+            <h1 class="page-title">Relatórios e Indicadores</h1>
+            <p class="page-description">Indicadores consolidados de vendas</p>
+          </div>
+
+          <!-- Barra de Seleção de Mês e Ano -->
+          <div class="filter-bar">
+            <div class="filter-group">
+              <label for="relatorioMesAno">Selecione o Mês e Ano:</label>
+              <input type="month" id="relatorioMesAno" class="form-input">
+            </div>
+          </div>
+
+          <!-- SOMENTE DOIS INDICADORES DEFINIDOS -->
+          <div class="cards-grid" style="grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));">
+            
+            <!-- Indicador 1: Total vendido no mês -->
+            <div class="indicator-card" style="padding: 28px;">
+              <div class="indicator-icon" style="width: 56px; height: 56px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="16" y1="2" x2="16" y2="6"></line>
+                  <line x1="8" y1="2" x2="8" y2="6"></line>
+                  <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
+              </div>
+              <div class="indicator-info">
+                <span class="indicator-label" style="font-size: 0.9rem;">1. Total Vendido no Mês</span>
+                <span class="indicator-value" id="relatorioTotalMes" style="font-size: 1.8rem; margin: 6px 0;">R$ 0,00</span>
+                <span class="indicator-sub" id="relatorioPeriodoTexto" style="font-size: 0.85rem;">Período selecionado</span>
+              </div>
+            </div>
+
+            <!-- Indicador 2: Total geral vendido -->
+            <div class="indicator-card" style="padding: 28px;">
+              <div class="indicator-icon" style="width: 56px; height: 56px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"></path>
+                  <line x1="12" y1="6" x2="12" y2="8"></line>
+                  <line x1="12" y1="16" x2="12" y2="18"></line>
+                </svg>
+              </div>
+              <div class="indicator-info">
+                <span class="indicator-label" style="font-size: 0.9rem;">2. Total Geral Vendido</span>
+                <span class="indicator-value" id="relatorioTotalGeral" style="font-size: 1.8rem; margin: 6px 0;">R$ 0,00</span>
+                <span class="indicator-sub" style="font-size: 0.85rem;">Acumulado de todas as vendas</span>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- SEÇÃO 6: VENDAS POR MÊS -->
+        <section id="section-vendas-mes" class="app-section">
+          <div class="page-header">
+            <h1 class="page-title">Vendas por Mês</h1>
+            <p class="page-description">Visualização e organização das vendas realizadas por período mensal</p>
+          </div>
+
+          <div class="filter-bar">
+            <div class="filter-group">
+              <label for="filtroVendasMes">Selecione o Mês / Ano:</label>
+              <input type="month" id="filtroVendasMes" class="form-input">
+            </div>
+            <div id="vendasMesResumoTotal" style="font-weight: 600; color: var(--primary-dark); font-size: 0.95rem;">
+              Total no Período: R$ 0,00
+            </div>
+          </div>
+
+          <div class="table-card">
+            <div class="table-responsive">
+              <table class="custom-table">
+                <thead>
+                  <tr>
+                    <th>Nome do Cliente</th>
+                    <th>Valor do Crédito</th>
+                    <th>Forma de Pagamento</th>
+                    <th>Número da Cota</th>
+                    <th>Número do Grupo</th>
+                    <th>Data da Venda</th>
+                    <th>Número do Contrato</th>
+                    <th>Forma de Captação</th>
+                  </tr>
+                </thead>
+                <tbody id="tabelaVendasMesCorpo">
+                  <!-- Linhas preenchidas dinamicamente -->
+                </tbody>
+              </table>
+            </div>
+            <div id="emptyVendasMes" class="empty-state" style="display: none;">
+              <p>Nenhuma venda registrada para o mês selecionado.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- SEÇÃO 7: CONFIGURAÇÕES -->
+        <section id="section-configuracoes" class="app-section">
+          <div class="page-header">
+            <h1 class="page-title">Configurações</h1>
+            <p class="page-description">Gerenciamento de opções do sistema</p>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-card">
+              <h3 style="margin-bottom: 14px; font-size: 1rem;">Formas de Pagamento</h3>
+              <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 12px;">Adicione opções personalizadas para pagamentos:</p>
+              <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <input type="text" id="novoPagamentoInput" class="form-input" placeholder="Nova forma de pagamento" style="flex: 1;">
+                <button type="button" class="btn btn-primary" id="btnAdicionarPagamento">Adicionar</button>
+              </div>
+              <ul id="listaPagamentos" style="list-style: none; display: flex; flex-direction: column; gap: 6px;">
+                <!-- Itens carregados via script -->
+              </ul>
+            </div>
+
+            <div class="form-card">
+              <h3 style="margin-bottom: 14px; font-size: 1rem;">Formas de Captação</h3>
+              <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 12px;">Adicione canais de captação de clientes:</p>
+              <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <input type="text" id="novaCaptacaoInput" class="form-input" placeholder="Nova forma de captação" style="flex: 1;">
+                <button type="button" class="btn btn-primary" id="btnAdicionarCaptacao">Adicionar</button>
+              </div>
+              <ul id="listaCaptacoes" style="list-style: none; display: flex; flex-direction: column; gap: 6px;">
+                <!-- Itens carregados via script -->
+              </ul>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
+
