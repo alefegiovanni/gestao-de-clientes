@@ -941,6 +941,101 @@ const app = {
   },
 
   // MÉTODOS PARA ROLAGEM HORIZONTAL DAS TABELAS
+  criarBarraRolagemFisica(tableWrapper) {
+    const bar = document.createElement('div');
+    bar.className = 'custom-scrollbar-bar';
+
+    const btnLeft = document.createElement('button');
+    btnLeft.type = 'button';
+    btnLeft.className = 'btn-scroll-arrow';
+    btnLeft.innerHTML = '&#9664; Rolar';
+    btnLeft.title = 'Rolar para a esquerda';
+
+    const btnRight = document.createElement('button');
+    btnRight.type = 'button';
+    btnRight.className = 'btn-scroll-arrow';
+    btnRight.innerHTML = 'Rolar &#9654;';
+    btnRight.title = 'Rolar para a direita';
+
+    const track = document.createElement('div');
+    track.className = 'custom-scrollbar-track';
+
+    const thumb = document.createElement('div');
+    thumb.className = 'custom-scrollbar-thumb';
+    track.appendChild(thumb);
+
+    bar.appendChild(btnLeft);
+    bar.appendChild(track);
+    bar.appendChild(btnRight);
+
+    const atualizarPolegar = () => {
+      const maxScroll = tableWrapper.scrollWidth - tableWrapper.clientWidth;
+      if (maxScroll <= 0) {
+        bar.style.display = 'none';
+        return;
+      }
+      bar.style.display = 'flex';
+      const trackWidth = track.clientWidth || 300;
+      const thumbWidth = Math.max(50, (tableWrapper.clientWidth / tableWrapper.scrollWidth) * trackWidth);
+      thumb.style.width = `${thumbWidth}px`;
+      const maxThumbLeft = trackWidth - thumbWidth;
+      const thumbLeft = (tableWrapper.scrollLeft / maxScroll) * maxThumbLeft;
+      thumb.style.transform = `translateX(${thumbLeft}px)`;
+    };
+
+    tableWrapper.addEventListener('scroll', atualizarPolegar);
+    window.addEventListener('resize', atualizarPolegar);
+    setTimeout(atualizarPolegar, 100);
+
+    btnLeft.addEventListener('click', () => {
+      tableWrapper.scrollBy({ left: -250, behavior: 'smooth' });
+    });
+    btnRight.addEventListener('click', () => {
+      tableWrapper.scrollBy({ left: 250, behavior: 'smooth' });
+    });
+
+    let isDragging = false;
+    let startX = 0;
+    let startScrollLeft = 0;
+
+    thumb.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      startX = e.clientX;
+      startScrollLeft = tableWrapper.scrollLeft;
+      document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const trackWidth = track.clientWidth;
+      const thumbWidth = thumb.clientWidth;
+      const maxThumbLeft = trackWidth - thumbWidth;
+      const maxScroll = tableWrapper.scrollWidth - tableWrapper.clientWidth;
+      if (maxThumbLeft > 0) {
+        tableWrapper.scrollLeft = startScrollLeft + (dx / maxThumbLeft) * maxScroll;
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        document.body.style.userSelect = '';
+      }
+    });
+
+    track.addEventListener('click', (e) => {
+      if (e.target === thumb) return;
+      const rect = track.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const percent = clickX / rect.width;
+      const maxScroll = tableWrapper.scrollWidth - tableWrapper.clientWidth;
+      tableWrapper.scrollTo({ left: percent * maxScroll, behavior: 'smooth' });
+    });
+
+    return bar;
+  },
+
   rolarTabela(wrapperId, delta) {
     const el = document.getElementById(wrapperId);
     if (el) {
