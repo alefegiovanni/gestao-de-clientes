@@ -4,6 +4,7 @@ const app = {
   opcoes: { pagamentos: [], captacoes: [] },
 
   init() {
+    this.configurarLogin();
     this.configurarNavegacao();
     this.configurarMascaraMoeda();
     this.configurarDataAutomatica();
@@ -12,10 +13,119 @@ const app = {
     this.configurarFiltrosPeriodo();
     this.configurarConfiguracoes();
 
-    // Carregar opções e dados iniciais
-    this.carregarOpcoes().then(() => {
-      this.carregarDashboard();
+    // Se já estiver logado na sessão atual
+    if (sessionStorage.getItem('gestao_logado') === 'true') {
+      const loginScreen = document.getElementById('loginScreen');
+      if (loginScreen) loginScreen.style.display = 'none';
+      this.carregarOpcoes().then(() => {
+        this.carregarDashboard();
+      });
+    }
+  },
+
+  // 0. Autenticação por PIN
+  configurarLogin() {
+    const loginScreen = document.getElementById('loginScreen');
+    const formLogin = document.getElementById('formLogin');
+    const digits = document.querySelectorAll('.pin-digit');
+    const erroMsg = document.getElementById('loginErro');
+    const btnSair = document.getElementById('btnSair');
+
+    // Movimentação automática de foco entre os 4 dígitos
+    digits.forEach((digit, index) => {
+      digit.addEventListener('input', (e) => {
+        digit.value = digit.value.replace(/\D/g, '');
+        if (digit.value && index < digits.length - 1) {
+          digits[index + 1].focus();
+        }
+        if (erroMsg) erroMsg.style.display = 'none';
+      });
+
+      digit.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && !digit.value && index > 0) {
+          digits[index - 1].focus();
+        }
+      });
     });
+
+    formLogin.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      let pin = '';
+      digits.forEach(d => pin += d.value);
+
+      if (pin.length !== 4) {
+        if (erroMsg) {
+          erroMsg.textContent = 'Digite os 4 números da senha.';
+          erroMsg.style.display = 'block';
+        }
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Senha incorreta.');
+        }
+
+        // Sucesso
+        sessionStorage.setItem('gestao_logado', 'true');
+        loginScreen.style.display = 'none';
+        this.mostrarToast('Acesso liberado com sucesso!');
+        this.carregarOpcoes().then(() => {
+          this.carregarDashboard();
+        });
+      } catch (err) {
+        if (erroMsg) {
+          erroMsg.textContent = err.message;
+          erroMsg.style.display = 'block';
+        }
+        digits.forEach(d => d.value = '');
+        if (digits[0]) digits[0].focus();
+      }
+    });
+
+    // Botão Sair do Sistema
+    if (btnSair) {
+      btnSair.addEventListener('click', (e) => {
+        e.preventDefault();
+        sessionStorage.removeItem('gestao_logado');
+        digits.forEach(d => d.value = '');
+        if (loginScreen) loginScreen.style.display = 'flex';
+        if (digits[0]) digits[0].focus();
+        this.mostrarToast('Você saiu do sistema.');
+      });
+    }
+
+    // Formulário de Alteração de PIN
+    const formAlterarPin = document.getElementById('formAlterarPin');
+    if (formAlterarPin) {
+      formAlterarPin.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const pinAtual = document.getElementById('pinAtual').value;
+        const novoPin = document.getElementById('novoPin').value;
+
+        try {
+          const res = await fetch('/api/alterar-pin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pinAtual, novoPin })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error);
+
+          this.mostrarToast('Senha atualizada com sucesso!');
+          formAlterarPin.reset();
+        } catch (err) {
+          this.mostrarToast(err.message, 'erro');
+        }
+      });
+    }
   },
 
   // Formatação de Moeda Brasileira R$

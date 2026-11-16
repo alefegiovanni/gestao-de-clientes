@@ -17,6 +17,47 @@ function extrairCompetencia(dataStr) {
   return dataStr.substring(0, 7); // 'YYYY-MM'
 }
 
+// 0. Autenticação por PIN de 4 dígitos
+app.post('/api/login', (req, res) => {
+  try {
+    const { pin } = req.body;
+    if (!pin || String(pin).length !== 4) {
+      return res.status(400).json({ error: 'Informe um PIN de 4 dígitos.' });
+    }
+    const conf = db.prepare('SELECT valor FROM config WHERE chave = ?').get('pin_acesso');
+    const pinValido = conf ? conf.valor : '1234';
+
+    if (String(pin) === String(pinValido)) {
+      return res.json({ success: true, message: 'Acesso autorizado!' });
+    } else {
+      return res.status(401).json({ error: 'Senha de 4 dígitos incorreta.' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/alterar-pin', (req, res) => {
+  try {
+    const { pinAtual, novoPin } = req.body;
+    if (!novoPin || !/^\d{4}$/.test(String(novoPin))) {
+      return res.status(400).json({ error: 'O novo PIN deve conter exatamente 4 números.' });
+    }
+    const conf = db.prepare('SELECT valor FROM config WHERE chave = ?').get('pin_acesso');
+    const pinValido = conf ? conf.valor : '1234';
+
+    if (String(pinAtual) !== String(pinValido)) {
+      return res.status(401).json({ error: 'Senha atual incorreta.' });
+    }
+
+    db.prepare('INSERT INTO config (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor')
+      .run('pin_acesso', String(novoPin));
+    res.json({ success: true, message: 'Senha alterada com sucesso!' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 1. Obter opções auxiliares (Formas de pagamento e Formas de captação)
 app.get('/api/opcoes', (req, res) => {
   try {

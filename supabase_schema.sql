@@ -82,3 +82,13 @@ INSERT INTO captacoes (nome) VALUES
   ('Outros')
 ON CONFLICT (nome) DO NOTHING;
 
+-- 8. Configurações e Senha de Acesso (PIN de 4 dígitos)
+CREATE TABLE IF NOT EXISTS config (
+  chave TEXT PRIMARY KEY,
+  valor TEXT NOT NULL
+);
+
+INSERT INTO config (chave, valor) VALUES 
+  ('pin_acesso', '1234')
+ON CONFLICT (chave) DO NOTHING;
+
