@@ -289,11 +289,11 @@
                   <span class="form-help">Formato brasileiro padrão (DD/MM/AAAA)</span>
                 </div>
 
-                <!-- 2. Mês da Venda (Identificado Automaticamente) -->
+                <!-- 2. Mês de Referência (Manual com sugestão automática) -->
                 <div class="form-group">
-                  <label class="form-label" for="campoMesVenda">Mês da Venda (Competência)</label>
-                  <input type="text" id="campoMesVenda" class="form-input" readonly placeholder="Calculado pela data...">
-                  <span class="form-help">Identificado automaticamente pela data da venda</span>
+                  <label class="form-label" for="campoMesVenda">Mês de Referência (Competência) <span class="req">*</span></label>
+                  <input type="month" id="campoMesVenda" class="form-input" required>
+                  <span class="form-help">Preenchimento sugerido pelo ciclo, editável manualmente</span>
                 </div>
 
                 <!-- 3. Nome do Cliente -->
@@ -602,8 +602,8 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label" for="editMesVenda">Mês (Competência)</label>
-            <input type="text" id="editMesVenda" class="form-input" readonly>
+            <label class="form-label" for="editMesVenda">Mês de Referência (Competência) <span class="req">*</span></label>
+            <input type="month" id="editMesVenda" class="form-input" required>
           </div>
 
           <div class="form-group col-span-2">

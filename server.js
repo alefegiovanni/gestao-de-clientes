@@ -172,7 +172,8 @@ app.post('/api/vendas', (req, res) => {
       numeroGrupo,
       dataVenda,
       numeroContrato,
-      formaCaptacaoId
+      formaCaptacaoId,
+      mesAnoCompetencia: mesCompetenciaInformado
     } = req.body;
 
     // Validações obrigatórias
@@ -206,7 +207,10 @@ app.post('/api/vendas', (req, res) => {
     const cotaNormalizada = numeroCota.trim();
     const grupoNormalizado = numeroGrupo.trim();
     const clienteNormalizado = nomeCliente.trim();
-    const mesAnoCompetencia = extrairCompetencia(dataVenda);
+    let mesAnoCompetencia = mesCompetenciaInformado;
+    if (!mesAnoCompetencia || !/^\d{4}-\d{2}$/.test(mesAnoCompetencia)) {
+      mesAnoCompetencia = extrairCompetencia(dataVenda);
+    }
 
     // Transação para consistência
     const insertTransaction = db.transaction(() => {
@@ -290,7 +294,8 @@ app.put('/api/vendas/:id', (req, res) => {
       numeroGrupo,
       dataVenda,
       numeroContrato,
-      formaCaptacaoId
+      formaCaptacaoId,
+      mesAnoCompetencia: mesCompetenciaInformado
     } = req.body;
 
     if (!nomeCliente || !nomeCliente.trim()) return res.status(400).json({ error: 'O nome do cliente é obrigatório.' });
@@ -307,7 +312,10 @@ app.put('/api/vendas/:id', (req, res) => {
     const cotaNormalizada = numeroCota.trim();
     const grupoNormalizado = numeroGrupo.trim();
     const clienteNormalizado = nomeCliente.trim();
-    const mesAnoCompetencia = extrairCompetencia(dataVenda);
+    let mesAnoCompetencia = mesCompetenciaInformado;
+    if (!mesAnoCompetencia || !/^\d{4}-\d{2}$/.test(mesAnoCompetencia)) {
+      mesAnoCompetencia = extrairCompetencia(dataVenda);
+    }
 
     const updateTransaction = db.transaction(() => {
       const vendaAtual = db.prepare('SELECT id, contrato_id FROM vendas WHERE id = ?').get(vendaId);
@@ -402,7 +410,10 @@ app.get('/api/clientes', (req, res) => {
         cot.numero as cota_numero,
         g.numero as grupo_numero,
         v.valor_credito,
-        v.data_venda
+        v.data_venda,
+        v.mes_ano_competencia,
+        v.pagamento_id,
+        v.captacao_id
       FROM vendas v
       JOIN clientes c ON v.cliente_id = c.id
       JOIN contratos ct ON v.contrato_id = ct.id
@@ -431,13 +442,17 @@ app.get('/api/contratos', (req, res) => {
     const { busca } = req.query;
     let query = `
       SELECT 
+        v.id as venda_id,
         ct.numero as contrato_numero,
         c.nome as cliente_nome,
         v.valor_credito,
         cot.numero as cota_numero,
         g.numero as grupo_numero,
         v.data_venda,
-        p.nome as forma_pagamento
+        p.nome as forma_pagamento,
+        v.mes_ano_competencia,
+        v.pagamento_id,
+        v.captacao_id
       FROM vendas v
       JOIN clientes c ON v.cliente_id = c.id
       JOIN contratos ct ON v.contrato_id = ct.id

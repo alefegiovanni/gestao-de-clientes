@@ -302,7 +302,7 @@ const app = {
       return;
     }
     const competencia = this.calcularCompetenciaCiclo(dataStr);
-    inputMes.value = this.formatarCompetenciaBR(competencia);
+    inputMes.value = competencia;
   },
 
   // Carregar opções (Pagamentos e Captações)
@@ -343,6 +343,7 @@ const app = {
       e.preventDefault();
 
       const dataVenda = document.getElementById('campoDataVenda').value;
+      const mesAnoCompetencia = document.getElementById('campoMesVenda').value;
       const nomeCliente = document.getElementById('campoNomeCliente').value.trim();
       const valorStr = document.getElementById('campoValorCredito').value;
       const numeroContrato = document.getElementById('campoNumeroContrato').value.trim();
@@ -362,6 +363,7 @@ const app = {
 
       const payload = {
         dataVenda,
+        mesAnoCompetencia,
         nomeCliente,
         valorCredito,
         numeroContrato,
@@ -799,11 +801,11 @@ const app = {
       if (e.target === modal) fechar();
     });
 
-    // Atualizar competência no edit
+    // Atualizar sugestão de competência no edit ao alterar data
     inputData.addEventListener('change', () => {
       if (inputData.value) {
         const competencia = this.calcularCompetenciaCiclo(inputData.value);
-        inputMes.value = this.formatarCompetenciaBR(competencia);
+        inputMes.value = competencia;
       }
     });
 
@@ -826,6 +828,7 @@ const app = {
       e.preventDefault();
       const vendaId = document.getElementById('editVendaId').value;
       const dataVenda = inputData.value;
+      const mesAnoCompetencia = inputMes.value;
       const nomeCliente = document.getElementById('editNomeCliente').value.trim();
       const valorStr = inputValor.value;
       const numeroContrato = document.getElementById('editNumeroContrato').value.trim();
@@ -848,6 +851,7 @@ const app = {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             dataVenda,
+            mesAnoCompetencia,
             nomeCliente,
             valorCredito,
             numeroContrato,
@@ -902,10 +906,8 @@ const app = {
     document.getElementById('editVendaId').value = item.venda_id;
     document.getElementById('editDataVenda').value = item.data_venda;
     
-    if (item.data_venda) {
-      const competencia = this.calcularCompetenciaCiclo(item.data_venda);
-      document.getElementById('editMesVenda').value = this.formatarCompetenciaBR(competencia);
-    }
+    const comp = item.mes_ano_competencia || (item.data_venda ? this.calcularCompetenciaCiclo(item.data_venda) : '');
+    document.getElementById('editMesVenda').value = comp;
 
     document.getElementById('editNomeCliente').value = item.cliente_nome || '';
     document.getElementById('editValorCredito').value = Number(item.valor_credito || 0).toLocaleString('pt-BR', {

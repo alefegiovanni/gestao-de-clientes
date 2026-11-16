@@ -190,7 +190,8 @@ module.exports = async (req, res) => {
         numeroGrupo,
         dataVenda,
         numeroContrato,
-        formaCaptacaoId
+        formaCaptacaoId,
+        mesAnoCompetencia: mesCompetenciaInformado
       } = req.body || {};
 
       if (!nomeCliente || !nomeCliente.trim()) return res.status(400).json({ error: 'O nome do cliente é obrigatório.' });
@@ -207,7 +208,10 @@ module.exports = async (req, res) => {
       const cotaNorm = numeroCota.trim();
       const grupoNorm = numeroGrupo.trim();
       const clienteNorm = nomeCliente.trim();
-      const mesAnoCompetencia = extrairCompetencia(dataVenda);
+      let mesAnoCompetencia = mesCompetenciaInformado;
+      if (!mesAnoCompetencia || !/^\d{4}-\d{2}$/.test(mesAnoCompetencia)) {
+        mesAnoCompetencia = extrairCompetencia(dataVenda);
+      }
 
       // Verificar duplicidade de contrato
       const { data: ctExistente } = await supabase
@@ -327,7 +331,8 @@ module.exports = async (req, res) => {
         numeroGrupo,
         dataVenda,
         numeroContrato,
-        formaCaptacaoId
+        formaCaptacaoId,
+        mesAnoCompetencia: mesCompetenciaInformado
       } = req.body || {};
 
       if (!nomeCliente || !nomeCliente.trim()) return res.status(400).json({ error: 'O nome do cliente é obrigatório.' });
@@ -344,7 +349,10 @@ module.exports = async (req, res) => {
       const cotaNorm = numeroCota.trim();
       const grupoNorm = numeroGrupo.trim();
       const clienteNorm = nomeCliente.trim();
-      const mesAnoCompetencia = extrairCompetencia(dataVenda);
+      let mesAnoCompetencia = mesCompetenciaInformado;
+      if (!mesAnoCompetencia || !/^\d{4}-\d{2}$/.test(mesAnoCompetencia)) {
+        mesAnoCompetencia = extrairCompetencia(dataVenda);
+      }
 
       // Obter venda atual
       const { data: vendaAtual, error: errVendaAtual } = await supabase
@@ -482,6 +490,7 @@ module.exports = async (req, res) => {
           id,
           valor_credito,
           data_venda,
+          mes_ano_competencia,
           pagamento_id,
           captacao_id,
           clientes!inner (nome),
@@ -500,6 +509,7 @@ module.exports = async (req, res) => {
         grupo_numero: v.cotas?.grupos?.numero,
         valor_credito: v.valor_credito,
         data_venda: v.data_venda,
+        mes_ano_competencia: v.mes_ano_competencia,
         pagamento_id: v.pagamento_id,
         captacao_id: v.captacao_id
       }));
@@ -524,6 +534,7 @@ module.exports = async (req, res) => {
           id,
           valor_credito,
           data_venda,
+          mes_ano_competencia,
           pagamento_id,
           captacao_id,
           contratos!inner (numero),
@@ -543,6 +554,7 @@ module.exports = async (req, res) => {
         cota_numero: v.cotas?.numero,
         grupo_numero: v.cotas?.grupos?.numero,
         data_venda: v.data_venda,
+        mes_ano_competencia: v.mes_ano_competencia,
         forma_pagamento: v.pagamentos?.nome,
         pagamento_id: v.pagamento_id,
         captacao_id: v.captacao_id
