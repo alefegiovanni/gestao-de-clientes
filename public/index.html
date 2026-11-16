@@ -508,38 +508,24 @@
 
           <div class="filter-bar">
             <div class="filter-group">
-              <label for="filtroVendasMes">Selecione o Mês / Ano:</label>
+              <label for="filtroVendasMes">Filtrar por Mês / Ciclo:</label>
               <input type="month" id="filtroVendasMes" class="form-input">
+              <button type="button" class="btn btn-secondary" id="btnTodasVendasMes" style="padding: 9px 14px; font-size: 0.85rem;">
+                Ver Todos os Meses
+              </button>
             </div>
             <div id="vendasMesResumoTotal" style="font-weight: 600; color: var(--primary-dark); font-size: 0.95rem;">
-              Total no Período: R$ 0,00
+              Total Geral: R$ 0,00
             </div>
           </div>
 
-          <div class="table-card">
-            <div class="table-responsive">
-              <table class="custom-table">
-                <thead>
-                  <tr>
-                    <th>Nome do Cliente</th>
-                    <th>Valor do Crédito</th>
-                    <th>Forma de Pagamento</th>
-                    <th>Número da Cota</th>
-                    <th>Número do Grupo</th>
-                    <th>Data da Venda</th>
-                    <th>Número do Contrato</th>
-                    <th>Forma de Captação</th>
-                    <th style="text-align: center;">Ações</th>
-                  </tr>
-                </thead>
-                <tbody id="tabelaVendasMesCorpo">
-                  <!-- Linhas preenchidas dinamicamente -->
-                </tbody>
-              </table>
-            </div>
-            <div id="emptyVendasMes" class="empty-state" style="display: none;">
-              <p>Nenhuma venda registrada para o mês selecionado.</p>
-            </div>
+          <!-- Container dos Blocos Agrupados por Mês -->
+          <div id="containerVendasPorMes" style="display: flex; flex-direction: column; gap: 24px;">
+            <!-- Grupos de tabelas por mês renderizados dinamicamente aqui -->
+          </div>
+
+          <div id="emptyVendasMes" class="empty-state table-card" style="display: none; padding: 40px;">
+            <p>Nenhuma venda registrada para o período selecionado.</p>
           </div>
         </section>
 

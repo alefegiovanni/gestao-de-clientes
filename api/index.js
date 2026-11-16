@@ -11,9 +11,34 @@ const supabase = (supabaseUrl && supabaseKey)
   ? createClient(supabaseUrl, supabaseKey) 
   : null;
 
+// Funções auxiliares para formatação e competência (ciclo de consórcio: 16 a 15)
+// Do dia 16 em diante, já conta para o mês seguinte (ex: 16 de Novembro -> Dezembro)
 function extrairCompetencia(dataStr) {
-  if (!dataStr || dataStr.length < 7) return '';
-  return dataStr.substring(0, 7);
+  if (!dataStr) return '';
+  const partes = dataStr.split('-');
+  if (partes.length !== 3) return dataStr.substring(0, 7);
+
+  let ano = parseInt(partes[0], 10);
+  let mes = parseInt(partes[1], 10);
+  const dia = parseInt(partes[2], 10);
+
+  if (dia >= 16) {
+    mes += 1;
+    if (mes > 12) {
+      mes = 1;
+      ano += 1;
+    }
+  }
+
+  return `${ano}-${String(mes).padStart(2, '0')}`;
+}
+
+function obterCompetenciaAtual() {
+  const agora = new Date();
+  const ano = agora.getFullYear();
+  const mes = String(agora.getMonth() + 1).padStart(2, '0');
+  const dia = String(agora.getDate()).padStart(2, '0');
+  return extrairCompetencia(`${ano}-${mes}-${dia}`);
 }
 
 module.exports = async (req, res) => {
@@ -116,10 +141,7 @@ module.exports = async (req, res) => {
 
     // 2. GET /api/dashboard
     if (pathname === '/dashboard' && method === 'GET') {
-      const agora = new Date();
-      const anoAtual = agora.getFullYear();
-      const mesAtual = String(agora.getMonth() + 1).padStart(2, '0');
-      const competenciaAtual = `${anoAtual}-${mesAtual}`;
+      const competenciaAtual = obterCompetenciaAtual();
 
       // Card 1: Vendas no mês
       const { data: vendasMes, error: errMes } = await supabase
@@ -565,29 +587,46 @@ module.exports = async (req, res) => {
     // 7. GET /api/vendas-por-mes
     if (pathname === '/vendas-por-mes' && method === 'GET') {
       let mesAno = url.searchParams.get('mesAno');
-      if (!mesAno) {
-        const agora = new Date();
-        mesAno = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
+
+      let query;
+      if (mesAno && mesAno !== 'todas') {
+        query = supabase
+          .from('vendas')
+          .select(`
+            id,
+            valor_credito,
+            data_venda,
+            mes_ano_competencia,
+            pagamento_id,
+            captacao_id,
+            clientes!inner (nome),
+            contratos!inner (numero),
+            cotas!inner (numero, grupos!inner (numero)),
+            pagamentos!inner (nome),
+            captacoes!inner (nome)
+          `)
+          .eq('mes_ano_competencia', mesAno)
+          .order('data_venda', { ascending: false });
+      } else {
+        query = supabase
+          .from('vendas')
+          .select(`
+            id,
+            valor_credito,
+            data_venda,
+            mes_ano_competencia,
+            pagamento_id,
+            captacao_id,
+            clientes!inner (nome),
+            contratos!inner (numero),
+            cotas!inner (numero, grupos!inner (numero)),
+            pagamentos!inner (nome),
+            captacoes!inner (nome)
+          `)
+          .order('data_venda', { ascending: false });
       }
 
-      const { data, error } = await supabase
-        .from('vendas')
-        .select(`
-          id,
-          valor_credito,
-          data_venda,
-          mes_ano_competencia,
-          pagamento_id,
-          captacao_id,
-          clientes!inner (nome),
-          contratos!inner (numero),
-          cotas!inner (numero, grupos!inner (numero)),
-          pagamentos!inner (nome),
-          captacoes!inner (nome)
-        `)
-        .eq('mes_ano_competencia', mesAno)
-        .order('data_venda', { ascending: false });
-
+      const { data, error } = await query;
       if (error) throw error;
 
       const vendas = (data || []).map(v => ({
@@ -601,11 +640,12 @@ module.exports = async (req, res) => {
         contrato_numero: v.contratos?.numero,
         forma_captacao: v.captacoes?.nome,
         pagamento_id: v.pagamento_id,
-        captacao_id: v.captacao_id
+        captacao_id: v.captacao_id,
+        mes_ano_competencia: v.mes_ano_competencia
       }));
 
       return res.json({
-        mesSelecionado: mesAno,
+        mesSelecionado: mesAno || 'todas',
         vendas
       });
     }

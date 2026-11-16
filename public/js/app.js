@@ -154,6 +154,36 @@ const app = {
     return `${meses[mesIndex] || partes[1]} de ${partes[0]}`;
   },
 
+  // Cálculo da Competência pelo ciclo de consórcio (16 a 15)
+  // A partir do dia 16 conta para o mês seguinte (ex: 16 de Novembro -> Dezembro)
+  calcularCompetenciaCiclo(dataStr) {
+    if (!dataStr) return '';
+    const partes = dataStr.split('-');
+    if (partes.length !== 3) return dataStr.substring(0, 7);
+
+    let ano = parseInt(partes[0], 10);
+    let mes = parseInt(partes[1], 10);
+    const dia = parseInt(partes[2], 10);
+
+    if (dia >= 16) {
+      mes += 1;
+      if (mes > 12) {
+        mes = 1;
+        ano += 1;
+      }
+    }
+
+    return `${ano}-${String(mes).padStart(2, '0')}`;
+  },
+
+  obterCompetenciaAtual() {
+    const hoje = new Date();
+    const ano = hoje.getFullYear();
+    const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+    const dia = String(hoje.getDate()).padStart(2, '0');
+    return this.calcularCompetenciaCiclo(`${ano}-${mes}-${dia}`);
+  },
+
   // Notificações Toast
   mostrarToast(mensagem, tipo = 'sucesso') {
     const container = document.getElementById('toastContainer');
@@ -271,11 +301,8 @@ const app = {
       inputMes.value = '';
       return;
     }
-    const partes = dataStr.split('-');
-    if (partes.length >= 2) {
-      const competencia = `${partes[0]}-${partes[1]}`;
-      inputMes.value = this.formatarCompetenciaBR(competencia);
-    }
+    const competencia = this.calcularCompetenciaCiclo(dataStr);
+    inputMes.value = this.formatarCompetenciaBR(competencia);
   },
 
   // Carregar opções (Pagamentos e Captações)
@@ -479,10 +506,7 @@ const app = {
     try {
       const mesInput = document.getElementById('relatorioMesAno');
       if (!mesInput.value) {
-        const hoje = new Date();
-        const ano = hoje.getFullYear();
-        const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-        mesInput.value = `${ano}-${mes}`;
+        mesInput.value = this.obterCompetenciaAtual();
       }
 
       const mesAno = mesInput.value;
@@ -497,56 +521,127 @@ const app = {
     }
   },
 
-  // 5. VENDAS POR MÊS
-  async carregarVendasMes() {
+  // 5. VENDAS POR MÊS (Organizadas em blocos por mês, um embaixo do outro)
+  async carregarVendasMes(forcarTodas = false) {
     try {
       const mesInput = document.getElementById('filtroVendasMes');
-      if (!mesInput.value) {
-        const hoje = new Date();
-        const ano = hoje.getFullYear();
-        const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-        mesInput.value = `${ano}-${mes}`;
+      if (forcarTodas) {
+        mesInput.value = '';
       }
 
-      const mesAno = mesInput.value;
+      const mesAno = mesInput.value || 'todas';
       const res = await fetch(`/api/vendas-por-mes?mesAno=${encodeURIComponent(mesAno)}`);
       const data = await res.json();
 
-      const tbody = document.getElementById('tabelaVendasMesCorpo');
+      const container = document.getElementById('containerVendasPorMes');
       const empty = document.getElementById('emptyVendasMes');
-      tbody.innerHTML = '';
-
-      let totalPeriodo = 0;
+      container.innerHTML = '';
 
       if (!data.vendas || data.vendas.length === 0) {
         empty.style.display = 'block';
-        document.getElementById('vendasMesResumoTotal').textContent = `Total no Período: ${this.formatarMoeda(0)}`;
+        document.getElementById('vendasMesResumoTotal').textContent = `Total: ${this.formatarMoeda(0)}`;
         return;
       }
       empty.style.display = 'none';
 
+      let totalGeral = 0;
+
+      // Agrupar as vendas por mês_ano_competencia
+      const gruposPorMes = {};
       data.vendas.forEach(item => {
-        totalPeriodo += Number(item.valor_credito);
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td><strong>${item.cliente_nome}</strong></td>
-          <td><span class="badge-money">${this.formatarMoeda(item.valor_credito)}</span></td>
-          <td><span class="badge-tag">${item.forma_pagamento}</span></td>
-          <td>${item.cota_numero}</td>
-          <td>${item.grupo_numero}</td>
-          <td>${this.formatarDataBR(item.data_venda)}</td>
-          <td><span class="badge-tag">${item.contrato_numero}</span></td>
-          <td><span class="badge-tag">${item.forma_captacao}</span></td>
-          <td style="text-align: center;">
-            <button class="btn-action" onclick="app.abrirModalEdicao(${JSON.stringify(item).replace(/"/g, '&quot;')})">
-              ✏️ Editar
-            </button>
-          </td>
-        `;
-        tbody.appendChild(tr);
+        const comp = item.mes_ano_competencia || this.calcularCompetenciaCiclo(item.data_venda);
+        if (!gruposPorMes[comp]) {
+          gruposPorMes[comp] = [];
+        }
+        gruposPorMes[comp].push(item);
+        totalGeral += Number(item.valor_credito);
       });
 
-      document.getElementById('vendasMesResumoTotal').textContent = `Total no Período: ${this.formatarMoeda(totalPeriodo)}`;
+      // Ordenar meses de forma decrescente (mais recentes primeiro)
+      const mesesOrdenados = Object.keys(gruposPorMes).sort().reverse();
+
+      mesesOrdenados.forEach(mesChave => {
+        const listaVendas = gruposPorMes[mesChave];
+        const totalDoMes = listaVendas.reduce((acc, curr) => acc + Number(curr.valor_credito), 0);
+        const nomeMesFormatado = this.formatarCompetenciaBR(mesChave);
+
+        // Criar card de seção para cada mês
+        const cardMes = document.createElement('div');
+        cardMes.className = 'table-card';
+        cardMes.style.boxShadow = '0 2px 8px rgba(0,0,0,0.06)';
+
+        // Header com nome do mês e total do mês
+        const headerMes = document.createElement('div');
+        headerMes.style.display = 'flex';
+        headerMes.style.justifyContent = 'space-between';
+        headerMes.style.alignItems = 'center';
+        headerMes.style.padding = '16px 20px';
+        headerMes.style.backgroundColor = '#f8fafc';
+        headerMes.style.borderBottom = '1px solid var(--border-color)';
+        headerMes.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 10px; height: 10px; border-radius: 50%; background-color: var(--primary);"></div>
+            <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">${nomeMesFormatado}</h3>
+            <span class="badge-tag" style="background-color: #e2e8f0; font-weight: 600;">${listaVendas.length} ${listaVendas.length === 1 ? 'venda' : 'vendas'}</span>
+          </div>
+          <div style="font-size: 0.95rem; font-weight: 700; color: var(--primary-dark);">
+            Total do Mês: <span style="font-size: 1.05rem;">${this.formatarMoeda(totalDoMes)}</span>
+          </div>
+        `;
+        cardMes.appendChild(headerMes);
+
+        // Tabela de vendas do mês
+        const tableWrapper = document.createElement('div');
+        tableWrapper.className = 'table-responsive';
+        
+        let linhasHtml = '';
+        listaVendas.forEach(item => {
+          linhasHtml += `
+            <tr>
+              <td><strong>${item.cliente_nome}</strong></td>
+              <td><span class="badge-money">${this.formatarMoeda(item.valor_credito)}</span></td>
+              <td><span class="badge-tag">${item.forma_pagamento}</span></td>
+              <td>${item.cota_numero}</td>
+              <td>${item.grupo_numero}</td>
+              <td>${this.formatarDataBR(item.data_venda)}</td>
+              <td><span class="badge-tag">${item.contrato_numero}</span></td>
+              <td><span class="badge-tag">${item.forma_captacao}</span></td>
+              <td style="text-align: center;">
+                <button class="btn-action" onclick="app.abrirModalEdicao(${JSON.stringify(item).replace(/"/g, '&quot;')})">
+                  ✏️ Editar
+                </button>
+              </td>
+            </tr>
+          `;
+        });
+
+        tableWrapper.innerHTML = `
+          <table class="custom-table">
+            <thead>
+              <tr>
+                <th>Nome do Cliente</th>
+                <th>Valor do Crédito</th>
+                <th>Forma de Pagamento</th>
+                <th>Número da Cota</th>
+                <th>Número do Grupo</th>
+                <th>Data da Venda</th>
+                <th>Número do Contrato</th>
+                <th>Forma de Captação</th>
+                <th style="text-align: center;">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${linhasHtml}
+            </tbody>
+          </table>
+        `;
+
+        cardMes.appendChild(tableWrapper);
+        container.appendChild(cardMes);
+      });
+
+      const textoPrefixo = mesAno === 'todas' ? 'Total Geral Acumulado' : 'Total no Período';
+      document.getElementById('vendasMesResumoTotal').textContent = `${textoPrefixo}: ${this.formatarMoeda(totalGeral)}`;
     } catch (err) {
       console.error('Erro ao carregar vendas por mês:', err);
     }
@@ -580,6 +675,13 @@ const app = {
     document.getElementById('filtroVendasMes').addEventListener('change', () => {
       this.carregarVendasMes();
     });
+
+    const btnTodas = document.getElementById('btnTodasVendasMes');
+    if (btnTodas) {
+      btnTodas.addEventListener('click', () => {
+        this.carregarVendasMes(true);
+      });
+    }
   },
 
   // Seção Configurações
@@ -678,8 +780,8 @@ const app = {
     // Atualizar competência no edit
     inputData.addEventListener('change', () => {
       if (inputData.value) {
-        const partes = inputData.value.split('-');
-        inputMes.value = this.formatarCompetenciaBR(`${partes[0]}-${partes[1]}`);
+        const competencia = this.calcularCompetenciaCiclo(inputData.value);
+        inputMes.value = this.formatarCompetenciaBR(competencia);
       }
     });
 
@@ -779,8 +881,8 @@ const app = {
     document.getElementById('editDataVenda').value = item.data_venda;
     
     if (item.data_venda) {
-      const partes = item.data_venda.split('-');
-      document.getElementById('editMesVenda').value = this.formatarCompetenciaBR(`${partes[0]}-${partes[1]}`);
+      const competencia = this.calcularCompetenciaCiclo(item.data_venda);
+      document.getElementById('editMesVenda').value = this.formatarCompetenciaBR(competencia);
     }
 
     document.getElementById('editNomeCliente').value = item.cliente_nome || '';

@@ -10,11 +10,34 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Funções auxiliares para formatação e competência
+// Funções auxiliares para formatação e competência (ciclo de consórcio: 16 a 15)
+// Do dia 16 em diante, já conta para o mês seguinte (ex: 16 de Novembro -> Dezembro)
 function extrairCompetencia(dataStr) {
-  // dataStr formato YYYY-MM-DD
-  if (!dataStr || dataStr.length < 7) return '';
-  return dataStr.substring(0, 7); // 'YYYY-MM'
+  if (!dataStr) return '';
+  const partes = dataStr.split('-');
+  if (partes.length !== 3) return dataStr.substring(0, 7);
+
+  let ano = parseInt(partes[0], 10);
+  let mes = parseInt(partes[1], 10);
+  const dia = parseInt(partes[2], 10);
+
+  if (dia >= 16) {
+    mes += 1;
+    if (mes > 12) {
+      mes = 1;
+      ano += 1;
+    }
+  }
+
+  return `${ano}-${String(mes).padStart(2, '0')}`;
+}
+
+function obterCompetenciaAtual() {
+  const agora = new Date();
+  const ano = agora.getFullYear();
+  const mes = String(agora.getMonth() + 1).padStart(2, '0');
+  const dia = String(agora.getDate()).padStart(2, '0');
+  return extrairCompetencia(`${ano}-${mes}-${dia}`);
 }
 
 // 0. Autenticação por Usuário e Senha de 4 dígitos
@@ -98,11 +121,8 @@ app.post('/api/opcoes/captacoes', (req, res) => {
 // 2. DASHBOARD - 4 Indicadores
 app.get('/api/dashboard', (req, res) => {
   try {
-    // Competência atual baseada no mês e ano atuais
-    const agora = new Date();
-    const anoAtual = agora.getFullYear();
-    const mesAtual = String(agora.getMonth() + 1).padStart(2, '0');
-    const competenciaAtual = `${anoAtual}-${mesAtual}`;
+    // Competência atual baseada no ciclo comercial (16 a 15)
+    const competenciaAtual = obterCompetenciaAtual();
 
     // Card 1: Vendas no mês (soma valor dos créditos no mês atual)
     const sqlVendasMes = db.prepare(`
@@ -475,10 +495,10 @@ app.get('/api/relatorios', (req, res) => {
   }
 });
 
-// 7. VENDAS POR MÊS
+// 7. VENDAS POR MÊS (Permite ver todas as vendas ou filtrar por período)
 app.get('/api/vendas-por-mes', (req, res) => {
   try {
-    const { mesAno } = req.query; // Formato 'YYYY-MM'
+    const { mesAno } = req.query; // Formato 'YYYY-MM' ou vazio/todas
     
     // Obter lista de meses disponíveis com vendas cadastradas
     const mesesDisponiveis = db.prepare(`
@@ -487,14 +507,7 @@ app.get('/api/vendas-por-mes', (req, res) => {
       ORDER BY mes_ano_competencia DESC
     `).all().map(r => r.mes_ano_competencia);
 
-    // Se nenhum mês foi passado, usar o mais recente ou o mês atual
-    let mesAlvo = mesAno;
-    if (!mesAlvo) {
-      const agora = new Date();
-      mesAlvo = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
-    }
-
-    const query = `
+    let query = `
       SELECT 
         v.id as venda_id,
         c.nome as cliente_nome,
@@ -504,7 +517,8 @@ app.get('/api/vendas-por-mes', (req, res) => {
         g.numero as grupo_numero,
         v.data_venda,
         ct.numero as contrato_numero,
-        cap.nome as forma_captacao
+        cap.nome as forma_captacao,
+        v.mes_ano_competencia
       FROM vendas v
       JOIN clientes c ON v.cliente_id = c.id
       JOIN contratos ct ON v.contrato_id = ct.id
@@ -512,14 +526,20 @@ app.get('/api/vendas-por-mes', (req, res) => {
       JOIN grupos g ON cot.grupo_id = g.id
       JOIN pagamentos p ON v.pagamento_id = p.id
       JOIN captacoes cap ON v.captacao_id = cap.id
-      WHERE v.mes_ano_competencia = ?
-      ORDER BY v.data_venda DESC, v.id DESC
     `;
 
-    const vendas = db.prepare(query).all(mesAlvo);
+    const params = [];
+    if (mesAno && mesAno !== 'todas') {
+      query += ` WHERE v.mes_ano_competencia = ? `;
+      params.push(mesAno);
+    }
+
+    query += ` ORDER BY v.data_venda DESC, v.id DESC `;
+
+    const vendas = db.prepare(query).all(...params);
 
     res.json({
-      mesSelecionado: mesAlvo,
+      mesSelecionado: mesAno || 'todas',
       mesesDisponiveis,
       vendas
     });
