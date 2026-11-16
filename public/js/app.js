@@ -560,10 +560,11 @@ const app = {
       // Ordenar meses de forma decrescente (mais recentes primeiro)
       const mesesOrdenados = Object.keys(gruposPorMes).sort().reverse();
 
-      mesesOrdenados.forEach(mesChave => {
+      mesesOrdenados.forEach((mesChave, idx) => {
         const listaVendas = gruposPorMes[mesChave];
         const totalDoMes = listaVendas.reduce((acc, curr) => acc + Number(curr.valor_credito), 0);
         const nomeMesFormatado = this.formatarCompetenciaBR(mesChave);
+        const wrapperId = `wrapVendasMes_${idx}`;
 
         // Criar card de seção para cada mês
         const cardMes = document.createElement('div');
@@ -593,6 +594,7 @@ const app = {
         // Tabela de vendas do mês
         const tableWrapper = document.createElement('div');
         tableWrapper.className = 'table-responsive';
+        tableWrapper.id = wrapperId;
         
         let linhasHtml = '';
         listaVendas.forEach(item => {
@@ -635,8 +637,20 @@ const app = {
             </tbody>
           </table>
         `;
-
         cardMes.appendChild(tableWrapper);
+
+        // Barra e controles de rolagem interativos com botões
+        const scrollBarControl = document.createElement('div');
+        scrollBarControl.className = 'table-scroll-controller';
+        scrollBarControl.innerHTML = `
+          <button type="button" class="scroll-btn" onclick="app.rolarTabela('${wrapperId}', -300)">◀ Rolar Esquerda</button>
+          <div class="scroll-slider-track">
+            <input type="range" class="scroll-slider" min="0" max="100" value="0" oninput="app.sincronizarScrollSlider('${wrapperId}', this.value)">
+          </div>
+          <button type="button" class="scroll-btn" onclick="app.rolarTabela('${wrapperId}', 300)">Rolar Direita ▶</button>
+        `;
+        cardMes.appendChild(scrollBarControl);
+
         container.appendChild(cardMes);
       });
 
@@ -916,6 +930,22 @@ const app = {
     });
 
     modal.style.display = 'flex';
+  },
+
+  // MÉTODOS PARA ROLAGEM HORIZONTAL DAS TABELAS
+  rolarTabela(wrapperId, delta) {
+    const el = document.getElementById(wrapperId);
+    if (el) {
+      el.scrollBy({ left: delta, behavior: 'smooth' });
+    }
+  },
+
+  sincronizarScrollSlider(wrapperId, percentual) {
+    const el = document.getElementById(wrapperId);
+    if (el) {
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      el.scrollLeft = (percentual / 100) * maxScroll;
+    }
   }
 };
 
