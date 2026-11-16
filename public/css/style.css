@@ -356,36 +356,43 @@ body {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   box-shadow: var(--card-shadow);
-  overflow: hidden;
+  overflow: visible; /* Garante que scrollbar não seja escondida */
 }
 
 .table-responsive {
   width: 100%;
-  overflow-x: auto;
+  overflow-x: scroll !important; /* Força scroll horizontal ativo */
   -webkit-overflow-scrolling: touch;
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--primary) #e2e8f0;
 }
 
-/* Barra de rolagem bonita e visível */
+/* Barra de rolagem estilizada, sempre visível e grossa o suficiente para arrastar facilmente */
 .table-responsive::-webkit-scrollbar {
-  height: 8px;
+  height: 12px !important;
+  display: block !important;
 }
 
 .table-responsive::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 4px;
+  background: #e2e8f0 !important;
+  border-radius: 6px;
+  margin: 0 10px;
 }
 
 .table-responsive::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
+  background: #15803d !important; /* Cor verde destaque */
+  border-radius: 6px;
+  border: 2px solid #e2e8f0;
 }
 
 .table-responsive::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #166534 !important;
 }
 
 .custom-table {
   width: 100%;
+  min-width: 1100px; /* Garante que todas as 9 colunas tenham espaço natural e criem a rolagem livre */
   border-collapse: collapse;
   text-align: left;
   font-size: 0.88rem;
