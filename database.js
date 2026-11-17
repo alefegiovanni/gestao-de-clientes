@@ -76,7 +76,37 @@ function initDb() {
       chave TEXT PRIMARY KEY,
       valor TEXT NOT NULL
     );
+
+    -- Usuários e Acessos da Equipe
+    CREATE TABLE IF NOT EXISTS usuarios (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nome TEXT NOT NULL,
+      usuario TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      senha TEXT NOT NULL,
+      perfil TEXT NOT NULL CHECK (perfil IN ('gerente', 'vendedor')),
+      criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
+
+  // Adicionar coluna vendedor_id na tabela vendas se ainda não existir
+  const colsVendas = db.prepare("PRAGMA table_info(vendas)").all().map(c => c.name);
+  if (!colsVendas.includes('vendedor_id')) {
+    db.exec("ALTER TABLE vendas ADD COLUMN vendedor_id INTEGER REFERENCES usuarios(id)");
+  }
+
+  // Seed de usuários padrão se a tabela de usuários estiver vazia
+  const countUsers = db.prepare('SELECT count(*) as count FROM usuarios').get().count;
+  if (countUsers === 0) {
+    const insertUser = db.prepare('INSERT INTO usuarios (nome, usuario, senha, perfil) VALUES (?, ?, ?, ?)');
+    insertUser.run('Giovanni', 'giovanni', '3105', 'vendedor');
+    insertUser.run('Gerente', 'gerente', '3105', 'gerente');
+  }
+
+  // Vincular vendas existentes sem vendedor ao Giovanni
+  const userGiovanni = db.prepare("SELECT id FROM usuarios WHERE usuario = 'giovanni'").get();
+  if (userGiovanni) {
+    db.prepare("UPDATE vendas SET vendedor_id = ? WHERE vendedor_id IS NULL").run(userGiovanni.id);
+  }
 
   // Inserir valores padrão para pagamentos e captações se vazios
   const countPagamentos = db.prepare('SELECT count(*) as count FROM pagamentos').get().count;

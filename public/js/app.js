@@ -2,8 +2,16 @@
 const app = {
   secaoAtual: 'dashboard',
   opcoes: { pagamentos: [], captacoes: [] },
+  usuarioAtual: null,
+  vendedores: [],
 
   init() {
+    // Restaurar usuário se já logado
+    const userSaved = sessionStorage.getItem('gestao_usuario');
+    if (userSaved) {
+      try { this.usuarioAtual = JSON.parse(userSaved); } catch (e) {}
+    }
+
     this.configurarLogin();
     this.configurarNavegacao();
     this.configurarMascaraMoeda();
@@ -13,15 +21,65 @@ const app = {
     this.configurarPesquisas();
     this.configurarFiltrosPeriodo();
     this.configurarConfiguracoes();
+    this.configurarFiltroVendedor();
+    this.configurarUsuarios();
 
     // Se já estiver logado na sessão atual
-    if (sessionStorage.getItem('gestao_logado') === 'true') {
+    if (sessionStorage.getItem('gestao_logado') === 'true' && this.usuarioAtual) {
       const loginScreen = document.getElementById('loginScreen');
       if (loginScreen) loginScreen.style.display = 'none';
+      this.atualizarInterfaceUsuario();
       this.carregarOpcoes().then(() => {
         this.carregarDashboard();
       });
     }
+  },
+
+  getHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    if (this.usuarioAtual && this.usuarioAtual.id) {
+      headers['x-usuario-id'] = String(this.usuarioAtual.id);
+    }
+    return headers;
+  },
+
+  getFiltroVendedorParam() {
+    if (this.usuarioAtual?.perfil === 'gerente') {
+      const sel = document.getElementById('selectFiltroVendedor');
+      if (sel && sel.value && sel.value !== 'todos') {
+        return `&vendedorId=${encodeURIComponent(sel.value)}`;
+      }
+    }
+    return '';
+  },
+
+  atualizarInterfaceUsuario() {
+    if (!this.usuarioAtual) return;
+
+    const nomeEl = document.getElementById('userNameDisplay');
+    const roleEl = document.getElementById('userRoleDisplay');
+    const avatarEl = document.getElementById('userAvatar');
+    const menuUsuarios = document.getElementById('menuItemUsuarios');
+    const barFiltro = document.getElementById('barFiltroVendedorGlobal');
+    const grupoNovaVenda = document.getElementById('grupoVendedorNovaVenda');
+    const grupoModal = document.getElementById('grupoVendedorModalEdicao');
+
+    if (nomeEl) nomeEl.textContent = this.usuarioAtual.nome || 'Usuário';
+    if (roleEl) roleEl.textContent = this.usuarioAtual.perfil === 'gerente' ? 'Gerente' : 'Vendedor';
+    if (avatarEl) {
+      avatarEl.textContent = (this.usuarioAtual.nome || 'U').charAt(0).toUpperCase();
+      avatarEl.className = `user-avatar ${this.usuarioAtual.perfil === 'gerente' ? 'gerente' : ''}`;
+    }
+
+    const isGerente = this.usuarioAtual.perfil === 'gerente';
+    if (menuUsuarios) menuUsuarios.style.display = isGerente ? 'block' : 'none';
+    if (barFiltro) barFiltro.style.display = isGerente ? 'block' : 'none';
+    if (grupoNovaVenda) grupoNovaVenda.style.display = isGerente ? 'block' : 'none';
+    if (grupoModal) grupoModal.style.display = isGerente ? 'block' : 'none';
+
+    document.querySelectorAll('.th-vendedor').forEach(th => {
+      th.style.display = isGerente ? '' : 'none';
+    });
   },
 
   // 0. Autenticação por Usuário e Senha de 4 dígitos
@@ -73,9 +131,13 @@ const app = {
         }
 
         // Sucesso
+        this.usuarioAtual = data.usuario || { id: 1, nome: usuario, usuario, perfil: 'vendedor' };
         sessionStorage.setItem('gestao_logado', 'true');
+        sessionStorage.setItem('gestao_usuario', JSON.stringify(this.usuarioAtual));
+
         loginScreen.style.display = 'none';
-        this.mostrarToast('Bem-vindo ao sistema!');
+        this.atualizarInterfaceUsuario();
+        this.mostrarToast(`Bem-vindo(a), ${this.usuarioAtual.nome}!`);
         this.carregarOpcoes().then(() => {
           this.carregarDashboard();
         });
@@ -94,6 +156,8 @@ const app = {
       btnSair.addEventListener('click', (e) => {
         e.preventDefault();
         sessionStorage.removeItem('gestao_logado');
+        sessionStorage.removeItem('gestao_usuario');
+        this.usuarioAtual = null;
         if (inputSenha) inputSenha.value = '';
         if (loginScreen) loginScreen.style.display = 'flex';
         if (inputUser) inputUser.focus();
@@ -257,6 +321,7 @@ const app = {
       if (sectionId === 'relatorios') this.carregarRelatorios();
       if (sectionId === 'vendas-mes') this.carregarVendasMes();
       if (sectionId === 'configuracoes') this.renderizarConfiguracoes();
+      if (sectionId === 'usuarios') this.carregarUsuarios();
     }
   },
 
@@ -397,7 +462,7 @@ const app = {
     inputMes.value = competencia;
   },
 
-  // Carregar opções (Pagamentos e Captações)
+  // Carregar opções (Pagamentos, Captações e Vendedores)
   async carregarOpcoes() {
     try {
       const res = await fetch('/api/opcoes');
@@ -422,9 +487,219 @@ const app = {
         selCaptacao.appendChild(opt);
       });
 
+      await this.carregarVendedores();
       this.renderizarConfiguracoes();
     } catch (err) {
       console.error('Erro ao carregar opções:', err);
+    }
+  },
+
+  // Carregar lista de vendedores para filtros e formulários
+  async carregarVendedores() {
+    try {
+      const res = await fetch('/api/vendedores', { headers: this.getHeaders() });
+      if (!res.ok) return;
+      this.vendedores = await res.json();
+
+      // Popular select do filtro global
+      const selFiltro = document.getElementById('selectFiltroVendedor');
+      if (selFiltro) {
+        const valAtual = selFiltro.value || 'todos';
+        selFiltro.innerHTML = '<option value="todos">👥 Todos os Vendedores (Geral)</option>';
+        this.vendedores.forEach(v => {
+          const opt = document.createElement('option');
+          opt.value = v.id;
+          opt.textContent = `👤 ${v.nome}`;
+          selFiltro.appendChild(opt);
+        });
+        selFiltro.value = valAtual;
+      }
+
+      // Popular select do form Nova Venda
+      const selForm = document.getElementById('campoVendedorVenda');
+      if (selForm) {
+        selForm.innerHTML = '<option value="">Selecione o vendedor responsável...</option>';
+        this.vendedores.forEach(v => {
+          const opt = document.createElement('option');
+          opt.value = v.id;
+          opt.textContent = `${v.nome} (${v.usuario})`;
+          selForm.appendChild(opt);
+        });
+      }
+
+      // Popular select do modal de edição
+      const selModal = document.getElementById('editVendedorId');
+      if (selModal) {
+        selModal.innerHTML = '';
+        this.vendedores.forEach(v => {
+          const opt = document.createElement('option');
+          opt.value = v.id;
+          opt.textContent = `${v.nome} (${v.usuario})`;
+          selModal.appendChild(opt);
+        });
+      }
+    } catch (err) {
+      console.error('Erro ao carregar vendedores:', err);
+    }
+  },
+
+  // Configurar Filtro Global de Vendedor para o Gerente
+  configurarFiltroVendedor() {
+    const sel = document.getElementById('selectFiltroVendedor');
+    if (sel) {
+      sel.addEventListener('change', () => {
+        if (this.secaoAtual === 'dashboard') this.carregarDashboard();
+        if (this.secaoAtual === 'clientes') this.carregarClientes();
+        if (this.secaoAtual === 'contratos') this.carregarContratos();
+        if (this.secaoAtual === 'relatorios') this.carregarRelatorios();
+        if (this.secaoAtual === 'vendas-mes') this.carregarVendasMes();
+      });
+    }
+  },
+
+  // Gestão de Usuários e Equipe (Exclusivo Gerente)
+  configurarUsuarios() {
+    const btnNovo = document.getElementById('btnNovoUsuario');
+    if (btnNovo) {
+      btnNovo.addEventListener('click', () => {
+        this.abrirModalUsuario();
+      });
+    }
+
+    const btnFechar = document.getElementById('btnFecharModalUsuario');
+    const btnCancelar = document.getElementById('btnCancelarUsuario');
+    const modal = document.getElementById('modalUsuario');
+    const fechar = () => { if (modal) modal.style.display = 'none'; };
+
+    if (btnFechar) btnFechar.addEventListener('click', fechar);
+    if (btnCancelar) btnCancelar.addEventListener('click', fechar);
+    if (modal) {
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) fechar();
+      });
+    }
+
+    const form = document.getElementById('formUsuario');
+    if (form) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const id = document.getElementById('usuarioId').value;
+        const nome = document.getElementById('usuarioNome').value.trim();
+        const usuario = document.getElementById('usuarioLogin').value.trim();
+        const senha = document.getElementById('usuarioSenha').value.trim();
+        const perfil = document.getElementById('usuarioPerfil').value;
+
+        if (senha && senha.length !== 4) {
+          this.mostrarToast('A senha deve ter exatamente 4 números.', 'erro');
+          return;
+        }
+
+        const payload = { nome, usuario, perfil };
+        if (senha) payload.senha = senha;
+
+        try {
+          const url = id ? `/api/usuarios/${id}` : '/api/usuarios';
+          const method = id ? 'PUT' : 'POST';
+
+          const res = await fetch(url, {
+            method,
+            headers: this.getHeaders(),
+            body: JSON.stringify(payload)
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Erro ao salvar usuário.');
+
+          this.mostrarToast(id ? 'Usuário atualizado com sucesso!' : 'Novo membro cadastrado com sucesso!');
+          fechar();
+          await this.carregarUsuarios();
+          await this.carregarVendedores();
+        } catch (err) {
+          this.mostrarToast(err.message, 'erro');
+        }
+      });
+    }
+  },
+
+  abrirModalUsuario(item = null) {
+    const modal = document.getElementById('modalUsuario');
+    const titulo = document.getElementById('tituloModalUsuario');
+    const hintSenha = document.getElementById('hintSenhaUsuario');
+    const idInput = document.getElementById('usuarioId');
+    const nomeInput = document.getElementById('usuarioNome');
+    const loginInput = document.getElementById('usuarioLogin');
+    const senhaInput = document.getElementById('usuarioSenha');
+    const perfilInput = document.getElementById('usuarioPerfil');
+
+    if (item) {
+      titulo.textContent = 'Editar Usuário';
+      idInput.value = item.id;
+      nomeInput.value = item.nome;
+      loginInput.value = item.usuario;
+      senhaInput.value = '';
+      senhaInput.required = false;
+      hintSenha.style.display = 'block';
+      perfilInput.value = item.perfil;
+    } else {
+      titulo.textContent = 'Novo Membro da Equipe';
+      idInput.value = '';
+      nomeInput.value = '';
+      loginInput.value = '';
+      senhaInput.value = '';
+      senhaInput.required = true;
+      hintSenha.style.display = 'none';
+      perfilInput.value = 'vendedor';
+    }
+
+    modal.style.display = 'flex';
+  },
+
+  async carregarUsuarios() {
+    try {
+      const res = await fetch('/api/usuarios', { headers: this.getHeaders() });
+      if (!res.ok) throw new Error('Não autorizado');
+      const usuarios = await res.json();
+
+      const tbody = document.getElementById('tabelaUsuariosCorpo');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+
+      usuarios.forEach(u => {
+        const tr = document.createElement('tr');
+        const badgeClass = u.perfil === 'gerente' ? 'badge-perfil-gerente' : 'badge-perfil-vendedor';
+        const perfilTexto = u.perfil === 'gerente' ? '👑 Gerente' : '💼 Vendedor';
+
+        tr.innerHTML = `
+          <td><strong>${u.nome}</strong></td>
+          <td><code>${u.usuario}</code></td>
+          <td><span class="${badgeClass}">${perfilTexto}</span></td>
+          <td style="text-align: center;">
+            <button class="btn-action" onclick="app.abrirModalUsuario(${JSON.stringify(u).replace(/"/g, '&quot;')})">✏️ Editar</button>
+            ${u.id !== this.usuarioAtual.id ? `<button class="btn-action" style="color: var(--danger); margin-left: 6px;" onclick="app.excluirUsuario(${u.id}, '${u.nome}')">🗑️ Excluir</button>` : ''}
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    } catch (err) {
+      console.error('Erro ao carregar usuários:', err);
+    }
+  },
+
+  async excluirUsuario(id, nome) {
+    if (!confirm(`Deseja realmente remover o usuário "${nome}"?`)) return;
+
+    try {
+      const res = await fetch(`/api/usuarios/${id}`, {
+        method: 'DELETE',
+        headers: this.getHeaders()
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao remover usuário.');
+
+      this.mostrarToast('Usuário removido com sucesso!');
+      await this.carregarUsuarios();
+      await this.carregarVendedores();
+    } catch (err) {
+      this.mostrarToast(err.message, 'erro');
     }
   },
 
@@ -470,10 +745,17 @@ const app = {
         formaCaptacaoId: Number(formaCaptacaoId)
       };
 
+      if (this.usuarioAtual?.perfil === 'gerente') {
+        const vendedorSel = document.getElementById('campoVendedorVenda').value;
+        if (vendedorSel) {
+          payload.vendedorId = Number(vendedorSel);
+        }
+      }
+
       try {
         const res = await fetch('/api/vendas', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: this.getHeaders(),
           body: JSON.stringify(payload)
         });
 
@@ -506,7 +788,8 @@ const app = {
   // 1. DASHBOARD
   async carregarDashboard() {
     try {
-      const res = await fetch('/api/dashboard');
+      const url = `/api/dashboard?_t=${Date.now()}${this.getFiltroVendedorParam()}`;
+      const res = await fetch(url, { headers: this.getHeaders() });
       const data = await res.json();
 
       document.getElementById('cardVendasMes').textContent = this.formatarMoeda(data.vendasNoMes);
@@ -524,10 +807,12 @@ const app = {
   // 2. CLIENTES (com busca por nome do cliente ou número do contrato)
   async carregarClientes(busca = '') {
     try {
-      const url = busca ? `/api/clientes?busca=${encodeURIComponent(busca)}` : '/api/clientes';
-      const res = await fetch(url);
+      let url = busca ? `/api/clientes?busca=${encodeURIComponent(busca)}` : '/api/clientes?';
+      url += this.getFiltroVendedorParam();
+      const res = await fetch(url, { headers: this.getHeaders() });
       const lista = await res.json();
 
+      const isGerente = this.usuarioAtual?.perfil === 'gerente';
       const tbody = document.getElementById('tabelaClientesCorpo');
       const empty = document.getElementById('emptyClientes');
       tbody.innerHTML = '';
@@ -540,8 +825,13 @@ const app = {
 
       lista.forEach(item => {
         const tr = document.createElement('tr');
+        const vendedorBadge = isGerente 
+          ? `<td><span class="badge-vendedor">👤 ${item.vendedor_nome || 'Não inf.'}</span></td>` 
+          : '';
+
         tr.innerHTML = `
           <td><strong>${item.cliente_nome}</strong></td>
+          ${vendedorBadge}
           <td><span class="badge-tag">${item.contrato_numero}</span></td>
           <td>${item.cota_numero}</td>
           <td>${item.grupo_numero}</td>
@@ -571,10 +861,12 @@ const app = {
   // 3. CONTRATOS (com busca por número do contrato ou nome do cliente)
   async carregarContratos(busca = '') {
     try {
-      const url = busca ? `/api/contratos?busca=${encodeURIComponent(busca)}` : '/api/contratos';
-      const res = await fetch(url);
+      let url = busca ? `/api/contratos?busca=${encodeURIComponent(busca)}` : '/api/contratos?';
+      url += this.getFiltroVendedorParam();
+      const res = await fetch(url, { headers: this.getHeaders() });
       const lista = await res.json();
 
+      const isGerente = this.usuarioAtual?.perfil === 'gerente';
       const tbody = document.getElementById('tabelaContratosCorpo');
       const empty = document.getElementById('emptyContratos');
       tbody.innerHTML = '';
@@ -587,8 +879,13 @@ const app = {
 
       lista.forEach(item => {
         const tr = document.createElement('tr');
+        const vendedorBadge = isGerente 
+          ? `<td><span class="badge-vendedor">👤 ${item.vendedor_nome || 'Não inf.'}</span></td>` 
+          : '';
+
         tr.innerHTML = `
           <td><strong>${item.contrato_numero}</strong></td>
+          ${vendedorBadge}
           <td>${item.cliente_nome}</td>
           <td><span class="badge-money">${this.formatarMoeda(item.valor_credito)}</span></td>
           <td>${item.cota_numero}</td>
@@ -625,7 +922,8 @@ const app = {
       }
 
       const mesAno = mesInput.value;
-      const res = await fetch(`/api/relatorios?mesAno=${encodeURIComponent(mesAno)}`);
+      const url = `/api/relatorios?mesAno=${encodeURIComponent(mesAno)}${this.getFiltroVendedorParam()}`;
+      const res = await fetch(url, { headers: this.getHeaders() });
       const data = await res.json();
 
       document.getElementById('relatorioTotalMes').textContent = this.formatarMoeda(data.totalMesSelecionado);
@@ -645,9 +943,11 @@ const app = {
       }
 
       const mesAno = mesInput.value || 'todas';
-      const res = await fetch(`/api/vendas-por-mes?mesAno=${encodeURIComponent(mesAno)}`);
+      const url = `/api/vendas-por-mes?mesAno=${encodeURIComponent(mesAno)}${this.getFiltroVendedorParam()}`;
+      const res = await fetch(url, { headers: this.getHeaders() });
       const data = await res.json();
 
+      const isGerente = this.usuarioAtual?.perfil === 'gerente';
       const container = document.getElementById('containerVendasPorMes');
       const empty = document.getElementById('emptyVendasMes');
       container.innerHTML = '';
@@ -713,9 +1013,14 @@ const app = {
         
         let linhasHtml = '';
         listaVendas.forEach(item => {
+          const vendedorTd = isGerente 
+            ? `<td><span class="badge-vendedor">👤 ${item.vendedor_nome || 'Não inf.'}</span></td>` 
+            : '';
+
           linhasHtml += `
             <tr>
               <td><strong>${item.cliente_nome}</strong></td>
+              ${vendedorTd}
               <td><span class="badge-money">${this.formatarMoeda(item.valor_credito)}</span></td>
               <td><span class="badge-tag">${item.forma_pagamento}</span></td>
               <td>${item.cota_numero}</td>
@@ -737,6 +1042,7 @@ const app = {
             <thead>
               <tr>
                 <th>Nome do Cliente</th>
+                ${isGerente ? '<th class="th-vendedor">Vendedor</th>' : ''}
                 <th>Valor do Crédito</th>
                 <th>Forma de Pagamento</th>
                 <th>Número da Cota</th>
@@ -944,21 +1250,30 @@ const app = {
         return;
       }
 
+      const payload = {
+        dataVenda,
+        mesAnoCompetencia,
+        nomeCliente,
+        valorCredito,
+        numeroContrato,
+        numeroGrupo,
+        numeroCota,
+        formaPagamentoId: Number(formaPagamentoId),
+        formaCaptacaoId: Number(formaCaptacaoId)
+      };
+
+      if (this.usuarioAtual?.perfil === 'gerente') {
+        const selVendedorModal = document.getElementById('editVendedorId');
+        if (selVendedorModal && selVendedorModal.value) {
+          payload.vendedorId = Number(selVendedorModal.value);
+        }
+      }
+
       try {
         const res = await fetch(`/api/vendas/${vendaId}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            dataVenda,
-            mesAnoCompetencia,
-            nomeCliente,
-            valorCredito,
-            numeroContrato,
-            numeroGrupo,
-            numeroCota,
-            formaPagamentoId: Number(formaPagamentoId),
-            formaCaptacaoId: Number(formaCaptacaoId)
-          })
+          headers: this.getHeaders(),
+          body: JSON.stringify(payload)
         });
 
         const data = await res.json();
@@ -983,7 +1298,10 @@ const app = {
       if (!confirm('Tem certeza que deseja excluir esta venda do sistema?')) return;
 
       try {
-        const res = await fetch(`/api/vendas/${vendaId}`, { method: 'DELETE' });
+        const res = await fetch(`/api/vendas/${vendaId}`, {
+          method: 'DELETE',
+          headers: this.getHeaders()
+        });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Erro ao excluir.');
 
@@ -1037,6 +1355,12 @@ const app = {
       if (item.captacao_id == c.id || item.forma_captacao == c.nome) opt.selected = true;
       selCap.appendChild(opt);
     });
+
+    // Preencher vendedor no modal de edição
+    const selVendedorModal = document.getElementById('editVendedorId');
+    if (selVendedorModal && item.vendedor_id) {
+      selVendedorModal.value = item.vendedor_id;
+    }
 
     modal.style.display = 'flex';
   },

@@ -40,6 +40,28 @@ function obterCompetenciaAtual() {
   return extrairCompetencia(`${ano}-${mes}-${dia}`);
 }
 
+function obterUsuarioAuth(req) {
+  const authId = req.headers['x-usuario-id'] || req.query.usuarioAuthId;
+  if (!authId) return null;
+  try {
+    return db.prepare('SELECT id, nome, usuario, perfil FROM usuarios WHERE id = ?').get(authId);
+  } catch (e) {
+    return null;
+  }
+}
+
+function obterFiltroVendedor(req) {
+  const user = obterUsuarioAuth(req);
+  if (!user) return { vendedorId: null, isVendedor: false, isGerente: false, user: null };
+  if (user.perfil === 'vendedor') {
+    return { vendedorId: user.id, isVendedor: true, isGerente: false, user };
+  }
+  // Gerente
+  const f = req.query.vendedorId;
+  const vId = (f && f !== 'todos' && !isNaN(f)) ? Number(f) : null;
+  return { vendedorId: vId, isVendedor: false, isGerente: true, user };
+}
+
 // 0. Autenticação por Usuário e Senha de 4 dígitos
 app.post('/api/login', (req, res) => {
   try {
@@ -47,14 +69,170 @@ app.post('/api/login', (req, res) => {
     const userLimpo = (usuario || '').trim().toLowerCase();
     const passLimpo = String(senha || '').trim();
 
+    let u = null;
+    try {
+      u = db.prepare('SELECT id, nome, usuario, senha, perfil FROM usuarios WHERE usuario = ? COLLATE NOCASE').get(userLimpo);
+    } catch (e) {}
+
+    if (u) {
+      if (String(u.senha).trim() === passLimpo) {
+        return res.json({
+          success: true,
+          message: 'Acesso autorizado!',
+          usuario: {
+            id: u.id,
+            nome: u.nome,
+            usuario: u.usuario,
+            perfil: u.perfil
+          }
+        });
+      } else {
+        return res.status(401).json({ error: 'Senha incorreta.' });
+      }
+    }
+
+    // Fallback caso usuário ainda não conste na tabela
     const conf = db.prepare('SELECT valor FROM config WHERE chave = ?').get('senha_acesso');
     const senhaValida = conf ? conf.valor : '3105';
-
     if (userLimpo === 'giovanni' && passLimpo === senhaValida) {
-      return res.json({ success: true, message: 'Acesso autorizado!' });
-    } else {
-      return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
+      return res.json({
+        success: true,
+        message: 'Acesso autorizado!',
+        usuario: { id: 1, nome: 'Giovanni', usuario: 'giovanni', perfil: 'vendedor' }
+      });
     }
+    if (userLimpo === 'gerente' && passLimpo === senhaValida) {
+      return res.json({
+        success: true,
+        message: 'Acesso autorizado!',
+        usuario: { id: 2, nome: 'Gerente', usuario: 'gerente', perfil: 'gerente' }
+      });
+    }
+
+    return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// LISTAR VENDEDORES (Para filtros e seleção)
+app.get('/api/vendedores', (req, res) => {
+  try {
+    const vendedores = db.prepare(`
+      SELECT id, nome, usuario 
+      FROM usuarios 
+      WHERE perfil = 'vendedor' 
+      ORDER BY nome ASC
+    `).all();
+    res.json(vendedores);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GERENCIAMENTO DE USUÁRIOS (Exclusivo da Gerente)
+app.get('/api/usuarios', (req, res) => {
+  try {
+    const userAuth = obterUsuarioAuth(req);
+    if (!userAuth || userAuth.perfil !== 'gerente') {
+      return res.status(403).json({ error: 'Acesso restrito à Gerente.' });
+    }
+    const usuarios = db.prepare(`
+      SELECT id, nome, usuario, perfil, criado_em 
+      FROM usuarios 
+      ORDER BY id ASC
+    `).all();
+    res.json(usuarios);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/usuarios', (req, res) => {
+  try {
+    const userAuth = obterUsuarioAuth(req);
+    if (!userAuth || userAuth.perfil !== 'gerente') {
+      return res.status(403).json({ error: 'Acesso restrito à Gerente.' });
+    }
+    const { nome, usuario, senha, perfil } = req.body;
+    if (!nome || !nome.trim()) return res.status(400).json({ error: 'O nome é obrigatório.' });
+    if (!usuario || !usuario.trim()) return res.status(400).json({ error: 'O usuário de login é obrigatório.' });
+    if (!senha || !/^\d{4}$/.test(String(senha).trim())) {
+      return res.status(400).json({ error: 'A senha deve conter exatamente 4 números.' });
+    }
+    const perfilValido = perfil === 'gerente' ? 'gerente' : 'vendedor';
+    const userNorm = usuario.trim().toLowerCase();
+
+    const existe = db.prepare('SELECT id FROM usuarios WHERE usuario = ? COLLATE NOCASE').get(userNorm);
+    if (existe) return res.status(400).json({ error: 'Este nome de usuário já está cadastrado.' });
+
+    const insert = db.prepare('INSERT INTO usuarios (nome, usuario, senha, perfil) VALUES (?, ?, ?, ?)');
+    const result = insert.run(nome.trim(), userNorm, String(senha).trim(), perfilValido);
+
+    res.status(201).json({
+      success: true,
+      message: 'Usuário cadastrado com sucesso!',
+      usuario: { id: result.lastInsertRowid, nome: nome.trim(), usuario: userNorm, perfil: perfilValido }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/usuarios/:id', (req, res) => {
+  try {
+    const userAuth = obterUsuarioAuth(req);
+    if (!userAuth || userAuth.perfil !== 'gerente') {
+      return res.status(403).json({ error: 'Acesso restrito à Gerente.' });
+    }
+    const userId = req.params.id;
+    const { nome, usuario, senha, perfil } = req.body;
+    if (!nome || !nome.trim()) return res.status(400).json({ error: 'O nome é obrigatório.' });
+    if (!usuario || !usuario.trim()) return res.status(400).json({ error: 'O usuário de login é obrigatório.' });
+    const userNorm = usuario.trim().toLowerCase();
+
+    const outro = db.prepare('SELECT id FROM usuarios WHERE usuario = ? COLLATE NOCASE AND id != ?').get(userNorm, userId);
+    if (outro) return res.status(400).json({ error: 'Este nome de usuário já pertence a outro membro.' });
+
+    const perfilValido = perfil === 'gerente' ? 'gerente' : 'vendedor';
+
+    if (senha && String(senha).trim()) {
+      if (!/^\d{4}$/.test(String(senha).trim())) {
+        return res.status(400).json({ error: 'A nova senha deve conter exatamente 4 números.' });
+      }
+      db.prepare('UPDATE usuarios SET nome = ?, usuario = ?, senha = ?, perfil = ? WHERE id = ?')
+        .run(nome.trim(), userNorm, String(senha).trim(), perfilValido, userId);
+    } else {
+      db.prepare('UPDATE usuarios SET nome = ?, usuario = ?, perfil = ? WHERE id = ?')
+        .run(nome.trim(), userNorm, perfilValido, userId);
+    }
+
+    res.json({ success: true, message: 'Usuário atualizado com sucesso!' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/usuarios/:id', (req, res) => {
+  try {
+    const userAuth = obterUsuarioAuth(req);
+    if (!userAuth || userAuth.perfil !== 'gerente') {
+      return res.status(403).json({ error: 'Acesso restrito à Gerente.' });
+    }
+    const userId = req.params.id;
+    if (Number(userId) === Number(userAuth.id)) {
+      return res.status(400).json({ error: 'Você não pode excluir o seu próprio usuário logado.' });
+    }
+
+    const totalVendas = db.prepare('SELECT count(*) as count FROM vendas WHERE vendedor_id = ?').get(userId).count;
+    if (totalVendas > 0) {
+      return res.status(400).json({ 
+        error: `Não é possível excluir este usuário pois ele possui ${totalVendas} venda(s) registrada(s). Você pode alterar a senha dele para impedir o acesso.` 
+      });
+    }
+
+    db.prepare('DELETE FROM usuarios WHERE id = ?').run(userId);
+    res.json({ success: true, message: 'Usuário excluído com sucesso!' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -121,40 +299,42 @@ app.post('/api/opcoes/captacoes', (req, res) => {
 // 2. DASHBOARD - 4 Indicadores
 app.get('/api/dashboard', (req, res) => {
   try {
-    // Competência atual baseada no ciclo comercial (16 a 15)
+    const { vendedorId, isGerente } = obterFiltroVendedor(req);
     const competenciaAtual = obterCompetenciaAtual();
 
-    // Card 1: Vendas no mês (soma valor dos créditos no mês atual)
-    const sqlVendasMes = db.prepare(`
-      SELECT COALESCE(SUM(valor_credito), 0) as total_mes
-      FROM vendas
-      WHERE mes_ano_competencia = ?
-    `).get(competenciaAtual);
+    let sqlVendasQuery = 'SELECT COALESCE(SUM(valor_credito), 0) as total_mes FROM vendas WHERE mes_ano_competencia = ?';
+    let sqlQtdQuery = 'SELECT COUNT(*) as qtd_vendas FROM vendas';
+    let sqlTicketQuery = 'SELECT COALESCE(AVG(valor_credito), 0) as ticket_medio FROM vendas';
+    let sqlClientesQuery = 'SELECT COUNT(DISTINCT cliente_id) as qtd_clientes FROM vendas';
 
-    // Card 2: Quantidade de vendas cadastradas no sistema
-    const sqlQtdVendas = db.prepare(`
-      SELECT COUNT(*) as qtd_vendas
-      FROM vendas
-    `).get();
+    const pVendas = [competenciaAtual];
+    const pQtd = [];
+    const pTicket = [];
+    const pClientes = [];
 
-    // Card 3: Ticket médio (calcular automaticamente o valor médio dos créditos)
-    const sqlTicketMedio = db.prepare(`
-      SELECT COALESCE(AVG(valor_credito), 0) as ticket_medio
-      FROM vendas
-    `).get();
+    if (vendedorId) {
+      sqlVendasQuery += ' AND vendedor_id = ?';
+      pVendas.push(vendedorId);
+      sqlQtdQuery += ' WHERE vendedor_id = ?';
+      pQtd.push(vendedorId);
+      sqlTicketQuery += ' WHERE vendedor_id = ?';
+      pTicket.push(vendedorId);
+      sqlClientesQuery += ' WHERE vendedor_id = ?';
+      pClientes.push(vendedorId);
+    }
 
-    // Card 4: Clientes cadastrados (quantidade total de clientes registrados)
-    const sqlClientes = db.prepare(`
-      SELECT COUNT(*) as qtd_clientes
-      FROM clientes
-    `).get();
+    const sqlVendasMes = db.prepare(sqlVendasQuery).get(...pVendas);
+    const sqlQtdVendas = db.prepare(sqlQtdQuery).get(...pQtd);
+    const sqlTicketMedio = db.prepare(sqlTicketQuery).get(...pTicket);
+    const sqlClientes = db.prepare(sqlClientesQuery).get(...pClientes);
 
     res.json({
       competenciaAtual,
       vendasNoMes: sqlVendasMes.total_mes,
       quantidadeVendas: sqlQtdVendas.qtd_vendas,
       ticketMedio: sqlTicketMedio.ticket_medio,
-      clientesCadastrados: sqlClientes.qtd_clientes
+      clientesCadastrados: sqlClientes.qtd_clientes,
+      isGerente
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -164,6 +344,7 @@ app.get('/api/dashboard', (req, res) => {
 // 3. CADASTRAR NOVA VENDA
 app.post('/api/vendas', (req, res) => {
   try {
+    const userAuth = obterUsuarioAuth(req);
     const {
       nomeCliente,
       valorCredito,
@@ -173,8 +354,15 @@ app.post('/api/vendas', (req, res) => {
       dataVenda,
       numeroContrato,
       formaCaptacaoId,
-      mesAnoCompetencia: mesCompetenciaInformado
+      mesAnoCompetencia: mesCompetenciaInformado,
+      vendedorId: vendedorEscolhido
     } = req.body;
+
+    // Se for vendedor, obrigatoriamente vincula a si mesmo. Se for gerente, pode escolher ou assume o seu id.
+    let vendedorIdFinal = userAuth ? userAuth.id : 1;
+    if (userAuth && userAuth.perfil === 'gerente' && vendedorEscolhido) {
+      vendedorIdFinal = Number(vendedorEscolhido);
+    }
 
     // Validações obrigatórias
     if (!nomeCliente || !nomeCliente.trim()) {
@@ -245,7 +433,7 @@ app.post('/api/vendas', (req, res) => {
       const resContrato = db.prepare('INSERT INTO contratos (numero, cliente_id) VALUES (?, ?)').run(contratoNormalizado, cliente.id);
       const contratoId = resContrato.lastInsertRowid;
 
-      // 6. Venda: inserir
+      // 6. Venda: inserir com vendedor_id
       const resVenda = db.prepare(`
         INSERT INTO vendas (
           cliente_id,
@@ -255,8 +443,9 @@ app.post('/api/vendas', (req, res) => {
           captacao_id,
           valor_credito,
           data_venda,
-          mes_ano_competencia
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          mes_ano_competencia,
+          vendedor_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         cliente.id,
         contratoId,
@@ -265,7 +454,8 @@ app.post('/api/vendas', (req, res) => {
         formaCaptacaoId,
         valCreditoNum,
         dataVenda,
-        mesAnoCompetencia
+        mesAnoCompetencia,
+        vendedorIdFinal
       );
 
       return resVenda.lastInsertRowid;
@@ -285,6 +475,7 @@ app.post('/api/vendas', (req, res) => {
 // ATUALIZAR/EDITAR VENDA
 app.put('/api/vendas/:id', (req, res) => {
   try {
+    const userAuth = obterUsuarioAuth(req);
     const vendaId = req.params.id;
     const {
       nomeCliente,
@@ -295,7 +486,8 @@ app.put('/api/vendas/:id', (req, res) => {
       dataVenda,
       numeroContrato,
       formaCaptacaoId,
-      mesAnoCompetencia: mesCompetenciaInformado
+      mesAnoCompetencia: mesCompetenciaInformado,
+      vendedorId: vendedorEscolhido
     } = req.body;
 
     if (!nomeCliente || !nomeCliente.trim()) return res.status(400).json({ error: 'O nome do cliente é obrigatório.' });
@@ -318,8 +510,13 @@ app.put('/api/vendas/:id', (req, res) => {
     }
 
     const updateTransaction = db.transaction(() => {
-      const vendaAtual = db.prepare('SELECT id, contrato_id FROM vendas WHERE id = ?').get(vendaId);
+      const vendaAtual = db.prepare('SELECT id, contrato_id, vendedor_id FROM vendas WHERE id = ?').get(vendaId);
       if (!vendaAtual) throw new Error('Venda não encontrada.');
+
+      // Se vendedor comum, só edita a sua
+      if (userAuth && userAuth.perfil === 'vendedor' && vendaAtual.vendedor_id !== userAuth.id) {
+        throw new Error('Você só pode editar as suas próprias vendas.');
+      }
 
       // Checar se contrato colide com OUTRO contrato
       const contratoExistente = db.prepare('SELECT id FROM contratos WHERE numero = ? AND id != ?').get(contratoNormalizado, vendaAtual.contrato_id);
@@ -352,6 +549,11 @@ app.put('/api/vendas/:id', (req, res) => {
       db.prepare('UPDATE contratos SET numero = ?, cliente_id = ? WHERE id = ?').run(contratoNormalizado, cliente.id, vendaAtual.contrato_id);
 
       // Atualizar Venda
+      let novoVendedorId = vendaAtual.vendedor_id;
+      if (userAuth && userAuth.perfil === 'gerente' && vendedorEscolhido) {
+        novoVendedorId = Number(vendedorEscolhido);
+      }
+
       db.prepare(`
         UPDATE vendas SET
           cliente_id = ?,
@@ -360,7 +562,8 @@ app.put('/api/vendas/:id', (req, res) => {
           captacao_id = ?,
           valor_credito = ?,
           data_venda = ?,
-          mes_ano_competencia = ?
+          mes_ano_competencia = ?,
+          vendedor_id = ?
         WHERE id = ?
       `).run(
         cliente.id,
@@ -370,6 +573,7 @@ app.put('/api/vendas/:id', (req, res) => {
         valCreditoNum,
         dataVenda,
         mesAnoCompetencia,
+        novoVendedorId,
         vendaId
       );
     });
@@ -384,9 +588,14 @@ app.put('/api/vendas/:id', (req, res) => {
 // EXCLUIR VENDA
 app.delete('/api/vendas/:id', (req, res) => {
   try {
+    const userAuth = obterUsuarioAuth(req);
     const vendaId = req.params.id;
-    const venda = db.prepare('SELECT contrato_id FROM vendas WHERE id = ?').get(vendaId);
+    const venda = db.prepare('SELECT contrato_id, vendedor_id FROM vendas WHERE id = ?').get(vendaId);
     if (!venda) return res.status(404).json({ error: 'Venda não encontrada' });
+
+    if (userAuth && userAuth.perfil === 'vendedor' && venda.vendedor_id !== userAuth.id) {
+      return res.status(403).json({ error: 'Você só pode excluir as suas próprias vendas.' });
+    }
 
     db.prepare('DELETE FROM vendas WHERE id = ?').run(vendaId);
     if (venda.contrato_id) {
@@ -402,6 +611,8 @@ app.delete('/api/vendas/:id', (req, res) => {
 app.get('/api/clientes', (req, res) => {
   try {
     const { busca } = req.query;
+    const { vendedorId } = obterFiltroVendedor(req);
+
     let query = `
       SELECT 
         v.id as venda_id,
@@ -413,17 +624,26 @@ app.get('/api/clientes', (req, res) => {
         v.data_venda,
         v.mes_ano_competencia,
         v.pagamento_id,
-        v.captacao_id
+        v.captacao_id,
+        v.vendedor_id,
+        u.nome as vendedor_nome
       FROM vendas v
       JOIN clientes c ON v.cliente_id = c.id
       JOIN contratos ct ON v.contrato_id = ct.id
       JOIN cotas cot ON v.cota_id = cot.id
       JOIN grupos g ON cot.grupo_id = g.id
+      LEFT JOIN usuarios u ON v.vendedor_id = u.id
+      WHERE 1=1
     `;
     const params = [];
 
+    if (vendedorId) {
+      query += ` AND v.vendedor_id = ? `;
+      params.push(vendedorId);
+    }
+
     if (busca && busca.trim()) {
-      query += ` WHERE (c.nome LIKE ? OR ct.numero LIKE ?) `;
+      query += ` AND (c.nome LIKE ? OR ct.numero LIKE ?) `;
       params.push(`%${busca.trim()}%`, `%${busca.trim()}%`);
     }
 
@@ -440,6 +660,8 @@ app.get('/api/clientes', (req, res) => {
 app.get('/api/contratos', (req, res) => {
   try {
     const { busca } = req.query;
+    const { vendedorId } = obterFiltroVendedor(req);
+
     let query = `
       SELECT 
         v.id as venda_id,
@@ -452,18 +674,27 @@ app.get('/api/contratos', (req, res) => {
         p.nome as forma_pagamento,
         v.mes_ano_competencia,
         v.pagamento_id,
-        v.captacao_id
+        v.captacao_id,
+        v.vendedor_id,
+        u.nome as vendedor_nome
       FROM vendas v
       JOIN clientes c ON v.cliente_id = c.id
       JOIN contratos ct ON v.contrato_id = ct.id
       JOIN cotas cot ON v.cota_id = cot.id
       JOIN grupos g ON cot.grupo_id = g.id
       JOIN pagamentos p ON v.pagamento_id = p.id
+      LEFT JOIN usuarios u ON v.vendedor_id = u.id
+      WHERE 1=1
     `;
     const params = [];
 
+    if (vendedorId) {
+      query += ` AND v.vendedor_id = ? `;
+      params.push(vendedorId);
+    }
+
     if (busca && busca.trim()) {
-      query += ` WHERE (ct.numero LIKE ? OR c.nome LIKE ?) `;
+      query += ` AND (ct.numero LIKE ? OR c.nome LIKE ?) `;
       params.push(`%${busca.trim()}%`, `%${busca.trim()}%`);
     }
 
@@ -481,22 +712,26 @@ app.get('/api/contratos', (req, res) => {
 // 2. Total geral vendido (todos os registros)
 app.get('/api/relatorios', (req, res) => {
   try {
-    const { mesAno } = req.query; // Espera formato 'YYYY-MM'
+    const { mesAno } = req.query;
+    const { vendedorId } = obterFiltroVendedor(req);
 
-    // Total geral vendido
-    const sqlTotalGeral = db.prepare(`
-      SELECT COALESCE(SUM(valor_credito), 0) as total_geral
-      FROM vendas
-    `).get();
+    let sqlGeralQuery = 'SELECT COALESCE(SUM(valor_credito), 0) as total_geral FROM vendas WHERE 1=1';
+    const paramsGeral = [];
+    if (vendedorId) {
+      sqlGeralQuery += ' AND vendedor_id = ?';
+      paramsGeral.push(vendedorId);
+    }
+    const sqlTotalGeral = db.prepare(sqlGeralQuery).get(...paramsGeral);
 
-    // Total vendido no mês selecionado
     let totalMesSelecionado = 0;
     if (mesAno && /^\d{4}-\d{2}$/.test(mesAno)) {
-      const sqlTotalMes = db.prepare(`
-        SELECT COALESCE(SUM(valor_credito), 0) as total_mes
-        FROM vendas
-        WHERE mes_ano_competencia = ?
-      `).get(mesAno);
+      let sqlMesQuery = 'SELECT COALESCE(SUM(valor_credito), 0) as total_mes FROM vendas WHERE mes_ano_competencia = ?';
+      const paramsMes = [mesAno];
+      if (vendedorId) {
+        sqlMesQuery += ' AND vendedor_id = ?';
+        paramsMes.push(vendedorId);
+      }
+      const sqlTotalMes = db.prepare(sqlMesQuery).get(...paramsMes);
       totalMesSelecionado = sqlTotalMes.total_mes;
     }
 
@@ -513,14 +748,17 @@ app.get('/api/relatorios', (req, res) => {
 // 7. VENDAS POR MÊS (Permite ver todas as vendas ou filtrar por período)
 app.get('/api/vendas-por-mes', (req, res) => {
   try {
-    const { mesAno } = req.query; // Formato 'YYYY-MM' ou vazio/todas
+    const { mesAno } = req.query;
+    const { vendedorId } = obterFiltroVendedor(req);
     
-    // Obter lista de meses disponíveis com vendas cadastradas
-    const mesesDisponiveis = db.prepare(`
-      SELECT DISTINCT mes_ano_competencia
-      FROM vendas
-      ORDER BY mes_ano_competencia DESC
-    `).all().map(r => r.mes_ano_competencia);
+    let mesesSql = 'SELECT DISTINCT mes_ano_competencia FROM vendas WHERE 1=1';
+    const paramsMeses = [];
+    if (vendedorId) {
+      mesesSql += ' AND vendedor_id = ?';
+      paramsMeses.push(vendedorId);
+    }
+    mesesSql += ' ORDER BY mes_ano_competencia DESC';
+    const mesesDisponiveis = db.prepare(mesesSql).all(...paramsMeses).map(r => r.mes_ano_competencia);
 
     let query = `
       SELECT 
@@ -533,7 +771,9 @@ app.get('/api/vendas-por-mes', (req, res) => {
         v.data_venda,
         ct.numero as contrato_numero,
         cap.nome as forma_captacao,
-        v.mes_ano_competencia
+        v.mes_ano_competencia,
+        v.vendedor_id,
+        u.nome as vendedor_nome
       FROM vendas v
       JOIN clientes c ON v.cliente_id = c.id
       JOIN contratos ct ON v.contrato_id = ct.id
@@ -541,11 +781,18 @@ app.get('/api/vendas-por-mes', (req, res) => {
       JOIN grupos g ON cot.grupo_id = g.id
       JOIN pagamentos p ON v.pagamento_id = p.id
       JOIN captacoes cap ON v.captacao_id = cap.id
+      LEFT JOIN usuarios u ON v.vendedor_id = u.id
+      WHERE 1=1
     `;
 
     const params = [];
+    if (vendedorId) {
+      query += ` AND v.vendedor_id = ? `;
+      params.push(vendedorId);
+    }
+
     if (mesAno && mesAno !== 'todas') {
-      query += ` WHERE v.mes_ano_competencia = ? `;
+      query += ` AND v.mes_ano_competencia = ? `;
       params.push(mesAno);
     }
 

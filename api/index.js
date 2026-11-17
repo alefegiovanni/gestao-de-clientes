@@ -67,26 +67,210 @@ module.exports = async (req, res) => {
   const method = req.method;
 
   try {
+    // Helper de autenticação do usuário na requisição
+    async function obterUsuarioAuth() {
+      const authId = req.headers['x-usuario-id'] || url.searchParams.get('usuarioAuthId');
+      if (!authId) return null;
+      try {
+        const { data: user } = await supabase.from('usuarios').select('id, nome, usuario, perfil').eq('id', authId).maybeSingle();
+        return user;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    async function obterFiltroVendedor() {
+      const user = await obterUsuarioAuth();
+      if (!user) return { vendedorId: null, isVendedor: false, isGerente: false, user: null };
+      if (user.perfil === 'vendedor') {
+        return { vendedorId: user.id, isVendedor: true, isGerente: false, user };
+      }
+      const f = url.searchParams.get('vendedorId');
+      const vId = (f && f !== 'todos' && !isNaN(f)) ? Number(f) : null;
+      return { vendedorId: vId, isVendedor: false, isGerente: true, user };
+    }
+
     // 0. POST /api/login - Validação de Usuário e Senha de 4 dígitos
     if (pathname === '/login' && method === 'POST') {
       const { usuario, senha } = req.body || {};
       const userLimpo = (usuario || '').trim().toLowerCase();
       const passLimpo = String(senha || '').trim();
 
-      // Credencial fixa definida pelo usuário ou gravada em config
-      const usuarioValido = 'giovanni';
-      let senhaValida = '3105';
+      // Buscar na tabela usuarios
+      try {
+        const { data: userDb } = await supabase
+          .from('usuarios')
+          .select('id, nome, usuario, senha, perfil')
+          .ilike('usuario', userLimpo)
+          .maybeSingle();
 
+        if (userDb) {
+          if (String(userDb.senha).trim() === passLimpo) {
+            return res.json({
+              success: true,
+              message: 'Acesso autorizado!',
+              usuario: {
+                id: userDb.id,
+                nome: userDb.nome,
+                usuario: userDb.usuario,
+                perfil: userDb.perfil
+              }
+            });
+          } else {
+            return res.status(401).json({ error: 'Senha incorreta.' });
+          }
+        }
+      } catch (e) {}
+
+      // Credencial fixa definida pelo usuário ou gravada em config como fallback
+      let senhaValida = '3105';
       try {
         const { data: conf } = await supabase.from('config').select('valor').eq('chave', 'senha_acesso').maybeSingle();
         if (conf && conf.valor) senhaValida = conf.valor;
       } catch (e) {}
 
-      if (userLimpo === usuarioValido && passLimpo === senhaValida) {
-        return res.json({ success: true, message: 'Acesso autorizado!' });
-      } else {
-        return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
+      if (userLimpo === 'giovanni' && passLimpo === senhaValida) {
+        return res.json({
+          success: true,
+          message: 'Acesso autorizado!',
+          usuario: { id: 1, nome: 'Giovanni', usuario: 'giovanni', perfil: 'vendedor' }
+        });
       }
+      if (userLimpo === 'gerente' && passLimpo === senhaValida) {
+        return res.json({
+          success: true,
+          message: 'Acesso autorizado!',
+          usuario: { id: 2, nome: 'Gerente', usuario: 'gerente', perfil: 'gerente' }
+        });
+      }
+
+      return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
+    }
+
+    // GET /api/vendedores - Lista vendedores para filtros
+    if (pathname === '/vendedores' && method === 'GET') {
+      try {
+        const { data: vendedores, error } = await supabase
+          .from('usuarios')
+          .select('id, nome, usuario')
+          .eq('perfil', 'vendedor')
+          .order('nome');
+        if (error) throw error;
+        return res.json(vendedores || []);
+      } catch (e) {
+        return res.json([{ id: 1, nome: 'Giovanni', usuario: 'giovanni' }]);
+      }
+    }
+
+    // GET /api/usuarios - Listar todos os usuários (Gerente)
+    if (pathname === '/usuarios' && method === 'GET') {
+      const userAuth = await obterUsuarioAuth();
+      if (!userAuth || userAuth.perfil !== 'gerente') {
+        return res.status(403).json({ error: 'Acesso restrito à Gerente.' });
+      }
+      const { data: usuarios, error } = await supabase
+        .from('usuarios')
+        .select('id, nome, usuario, perfil, criado_em')
+        .order('id');
+      if (error) throw error;
+      return res.json(usuarios || []);
+    }
+
+    // POST /api/usuarios - Cadastrar usuário (Gerente)
+    if (pathname === '/usuarios' && method === 'POST') {
+      const userAuth = await obterUsuarioAuth();
+      if (!userAuth || userAuth.perfil !== 'gerente') {
+        return res.status(403).json({ error: 'Acesso restrito à Gerente.' });
+      }
+      const { nome, usuario, senha, perfil } = req.body || {};
+      if (!nome || !nome.trim()) return res.status(400).json({ error: 'O nome é obrigatório.' });
+      if (!usuario || !usuario.trim()) return res.status(400).json({ error: 'O usuário de login é obrigatório.' });
+      if (!senha || !/^\d{4}$/.test(String(senha).trim())) {
+        return res.status(400).json({ error: 'A senha deve conter exatamente 4 números.' });
+      }
+      const perfilValido = perfil === 'gerente' ? 'gerente' : 'vendedor';
+      const userNorm = usuario.trim().toLowerCase();
+
+      const { data: existe } = await supabase.from('usuarios').select('id').ilike('usuario', userNorm).maybeSingle();
+      if (existe) return res.status(400).json({ error: 'Este nome de usuário já está cadastrado.' });
+
+      const { data: novoUser, error: errNovo } = await supabase
+        .from('usuarios')
+        .insert([{ nome: nome.trim(), usuario: userNorm, senha: String(senha).trim(), perfil: perfilValido }])
+        .select('id, nome, usuario, perfil')
+        .single();
+      if (errNovo) throw errNovo;
+
+      return res.status(201).json({
+        success: true,
+        message: 'Usuário cadastrado com sucesso!',
+        usuario: novoUser
+      });
+    }
+
+    // PUT /api/usuarios/:id - Editar usuário (Gerente)
+    const matchPutUser = pathname.match(/^\/usuarios\/(\d+)$/);
+    if (matchPutUser && method === 'PUT') {
+      const userAuth = await obterUsuarioAuth();
+      if (!userAuth || userAuth.perfil !== 'gerente') {
+        return res.status(403).json({ error: 'Acesso restrito à Gerente.' });
+      }
+      const userId = parseInt(matchPutUser[1], 10);
+      const { nome, usuario, senha, perfil } = req.body || {};
+      if (!nome || !nome.trim()) return res.status(400).json({ error: 'O nome é obrigatório.' });
+      if (!usuario || !usuario.trim()) return res.status(400).json({ error: 'O usuário de login é obrigatório.' });
+      const userNorm = usuario.trim().toLowerCase();
+
+      const { data: outro } = await supabase
+        .from('usuarios')
+        .select('id')
+        .ilike('usuario', userNorm)
+        .neq('id', userId)
+        .maybeSingle();
+      if (outro) return res.status(400).json({ error: 'Este nome de usuário já pertence a outro membro.' });
+
+      const perfilValido = perfil === 'gerente' ? 'gerente' : 'vendedor';
+      const updateData = { nome: nome.trim(), usuario: userNorm, perfil: perfilValido };
+      if (senha && String(senha).trim()) {
+        if (!/^\d{4}$/.test(String(senha).trim())) {
+          return res.status(400).json({ error: 'A nova senha deve conter exatamente 4 números.' });
+        }
+        updateData.senha = String(senha).trim();
+      }
+
+      const { error: errUpd } = await supabase.from('usuarios').update(updateData).eq('id', userId);
+      if (errUpd) throw errUpd;
+
+      return res.json({ success: true, message: 'Usuário atualizado com sucesso!' });
+    }
+
+    // DELETE /api/usuarios/:id - Excluir usuário (Gerente)
+    const matchDelUser = pathname.match(/^\/usuarios\/(\d+)$/);
+    if (matchDelUser && method === 'DELETE') {
+      const userAuth = await obterUsuarioAuth();
+      if (!userAuth || userAuth.perfil !== 'gerente') {
+        return res.status(403).json({ error: 'Acesso restrito à Gerente.' });
+      }
+      const userId = parseInt(matchDelUser[1], 10);
+      if (userId === Number(userAuth.id)) {
+        return res.status(400).json({ error: 'Você não pode excluir o seu próprio usuário logado.' });
+      }
+
+      const { count: totalVendas } = await supabase
+        .from('vendas')
+        .select('*', { count: 'exact', head: true })
+        .eq('vendedor_id', userId);
+
+      if (totalVendas && totalVendas > 0) {
+        return res.status(400).json({ 
+          error: `Não é possível excluir este usuário pois ele possui ${totalVendas} venda(s) registrada(s).` 
+        });
+      }
+
+      const { error: errDel } = await supabase.from('usuarios').delete().eq('id', userId);
+      if (errDel) throw errDel;
+
+      return res.json({ success: true, message: 'Usuário excluído com sucesso!' });
     }
 
     // POST /api/alterar-pin - Alterar Senha de 4 dígitos
@@ -142,46 +326,57 @@ module.exports = async (req, res) => {
     // 2. GET /api/dashboard
     if (pathname === '/dashboard' && method === 'GET') {
       const competenciaAtual = obterCompetenciaAtual();
+      const { vendedorId, isGerente } = await obterFiltroVendedor();
 
       // Card 1: Vendas no mês
-      const { data: vendasMes, error: errMes } = await supabase
+      let qVendasMes = supabase
         .from('vendas')
         .select('valor_credito')
         .eq('mes_ano_competencia', competenciaAtual);
+      if (vendedorId) qVendasMes = qVendasMes.eq('vendedor_id', vendedorId);
+      const { data: vendasMes, error: errMes } = await qVendasMes;
       if (errMes) throw errMes;
       const totalMes = (vendasMes || []).reduce((acc, curr) => acc + Number(curr.valor_credito), 0);
 
       // Card 2: Quantidade de vendas
-      const { count: qtdVendas, error: errQtd } = await supabase
-        .from('vendas')
-        .select('*', { count: 'exact', head: true });
+      let qQtd = supabase.from('vendas').select('*', { count: 'exact', head: true });
+      if (vendedorId) qQtd = qQtd.eq('vendedor_id', vendedorId);
+      const { count: qtdVendas, error: errQtd } = await qQtd;
       if (errQtd) throw errQtd;
 
       // Card 3: Ticket médio
-      const { data: todasVendas, error: errTodas } = await supabase
-        .from('vendas')
-        .select('valor_credito');
+      let qTodas = supabase.from('vendas').select('valor_credito');
+      if (vendedorId) qTodas = qTodas.eq('vendedor_id', vendedorId);
+      const { data: todasVendas, error: errTodas } = await qTodas;
       if (errTodas) throw errTodas;
       const somaGeral = (todasVendas || []).reduce((acc, curr) => acc + Number(curr.valor_credito), 0);
       const ticketMedio = (todasVendas && todasVendas.length > 0) ? (somaGeral / todasVendas.length) : 0;
 
       // Card 4: Clientes cadastrados
-      const { count: qtdClientes, error: errCli } = await supabase
-        .from('clientes')
-        .select('*', { count: 'exact', head: true });
-      if (errCli) throw errCli;
+      let qtdClientes = 0;
+      if (vendedorId) {
+        const { data: vCli } = await supabase.from('vendas').select('cliente_id').eq('vendedor_id', vendedorId);
+        const unicos = new Set((vCli || []).map(v => v.cliente_id));
+        qtdClientes = unicos.size;
+      } else {
+        const { count, error: errCli } = await supabase.from('clientes').select('*', { count: 'exact', head: true });
+        if (errCli) throw errCli;
+        qtdClientes = count || 0;
+      }
 
       return res.json({
         competenciaAtual,
         vendasNoMes: totalMes,
         quantidadeVendas: qtdVendas || 0,
         ticketMedio,
-        clientesCadastrados: qtdClientes || 0
+        clientesCadastrados: qtdClientes || 0,
+        isGerente
       });
     }
 
     // 3. POST /api/vendas
     if (pathname === '/vendas' && method === 'POST') {
+      const userAuth = await obterUsuarioAuth();
       const {
         nomeCliente,
         valorCredito,
@@ -191,8 +386,14 @@ module.exports = async (req, res) => {
         dataVenda,
         numeroContrato,
         formaCaptacaoId,
-        mesAnoCompetencia: mesCompetenciaInformado
+        mesAnoCompetencia: mesCompetenciaInformado,
+        vendedorId: vendedorEscolhido
       } = req.body || {};
+
+      let vendedorIdFinal = userAuth ? userAuth.id : 1;
+      if (userAuth && userAuth.perfil === 'gerente' && vendedorEscolhido) {
+        vendedorIdFinal = Number(vendedorEscolhido);
+      }
 
       if (!nomeCliente || !nomeCliente.trim()) return res.status(400).json({ error: 'O nome do cliente é obrigatório.' });
       const valCreditoNum = parseFloat(valorCredito);
@@ -296,18 +497,21 @@ module.exports = async (req, res) => {
       if (errCt) throw errCt;
 
       // Venda
+      const insertVendaObj = {
+        cliente_id: clienteId,
+        contrato_id: novoCt.id,
+        cota_id: cotaId,
+        pagamento_id: formaPagamentoId,
+        captacao_id: formaCaptacaoId,
+        valor_credito: valCreditoNum,
+        data_venda: dataVenda,
+        mes_ano_competencia: mesAnoCompetencia
+      };
+      if (vendedorIdFinal) insertVendaObj.vendedor_id = vendedorIdFinal;
+
       const { data: novaVenda, error: errVenda } = await supabase
         .from('vendas')
-        .insert([{
-          cliente_id: clienteId,
-          contrato_id: novoCt.id,
-          cota_id: cotaId,
-          pagamento_id: formaPagamentoId,
-          captacao_id: formaCaptacaoId,
-          valor_credito: valCreditoNum,
-          data_venda: dataVenda,
-          mes_ano_competencia: mesAnoCompetencia
-        }])
+        .insert([insertVendaObj])
         .select('id')
         .single();
       if (errVenda) throw errVenda;
@@ -322,6 +526,7 @@ module.exports = async (req, res) => {
     // PUT /api/vendas/:id - Atualizar/Editar uma venda existente
     const matchPutVenda = pathname.match(/^\/vendas\/(\d+)$/);
     if (matchPutVenda && method === 'PUT') {
+      const userAuth = await obterUsuarioAuth();
       const vendaId = parseInt(matchPutVenda[1], 10);
       const {
         nomeCliente,
@@ -332,7 +537,8 @@ module.exports = async (req, res) => {
         dataVenda,
         numeroContrato,
         formaCaptacaoId,
-        mesAnoCompetencia: mesCompetenciaInformado
+        mesAnoCompetencia: mesCompetenciaInformado,
+        vendedorId: vendedorEscolhido
       } = req.body || {};
 
       if (!nomeCliente || !nomeCliente.trim()) return res.status(400).json({ error: 'O nome do cliente é obrigatório.' });
@@ -357,12 +563,17 @@ module.exports = async (req, res) => {
       // Obter venda atual
       const { data: vendaAtual, error: errVendaAtual } = await supabase
         .from('vendas')
-        .select('id, contrato_id, cliente_id, cota_id')
+        .select('id, contrato_id, cliente_id, cota_id, vendedor_id')
         .eq('id', vendaId)
         .maybeSingle();
 
       if (errVendaAtual || !vendaAtual) {
         return res.status(404).json({ error: 'Venda não encontrada.' });
+      }
+
+      // Permissão
+      if (userAuth && userAuth.perfil === 'vendedor' && vendaAtual.vendedor_id && vendaAtual.vendedor_id !== userAuth.id) {
+        return res.status(403).json({ error: 'Você só pode editar as suas próprias vendas.' });
       }
 
       // Verificar se número de contrato colide com OUTRO contrato
@@ -448,17 +659,22 @@ module.exports = async (req, res) => {
       if (errUpdCt) throw errUpdCt;
 
       // 5. Atualizar Venda
+      const updateVendaObj = {
+        cliente_id: clienteId,
+        cota_id: cotaId,
+        pagamento_id: formaPagamentoId,
+        captacao_id: formaCaptacaoId,
+        valor_credito: valCreditoNum,
+        data_venda: dataVenda,
+        mes_ano_competencia: mesAnoCompetencia
+      };
+      if (userAuth && userAuth.perfil === 'gerente' && vendedorEscolhido) {
+        updateVendaObj.vendedor_id = Number(vendedorEscolhido);
+      }
+
       const { error: errUpdVenda } = await supabase
         .from('vendas')
-        .update({
-          cliente_id: clienteId,
-          cota_id: cotaId,
-          pagamento_id: formaPagamentoId,
-          captacao_id: formaCaptacaoId,
-          valor_credito: valCreditoNum,
-          data_venda: dataVenda,
-          mes_ano_competencia: mesAnoCompetencia
-        })
+        .update(updateVendaObj)
         .eq('id', vendaId);
       if (errUpdVenda) throw errUpdVenda;
 
@@ -468,9 +684,15 @@ module.exports = async (req, res) => {
     // DELETE /api/vendas/:id - Excluir venda
     const matchDelVenda = pathname.match(/^\/vendas\/(\d+)$/);
     if (matchDelVenda && method === 'DELETE') {
+      const userAuth = await obterUsuarioAuth();
       const vendaId = parseInt(matchDelVenda[1], 10);
-      const { data: vendaAtual } = await supabase.from('vendas').select('contrato_id').eq('id', vendaId).maybeSingle();
+      const { data: vendaAtual } = await supabase.from('vendas').select('contrato_id, vendedor_id').eq('id', vendaId).maybeSingle();
       
+      if (!vendaAtual) return res.status(404).json({ error: 'Venda não encontrada' });
+      if (userAuth && userAuth.perfil === 'vendedor' && vendaAtual.vendedor_id && vendaAtual.vendedor_id !== userAuth.id) {
+        return res.status(403).json({ error: 'Você só pode excluir as suas próprias vendas.' });
+      }
+
       const { error: errDelVenda } = await supabase.from('vendas').delete().eq('id', vendaId);
       if (errDelVenda) throw errDelVenda;
 
@@ -484,7 +706,9 @@ module.exports = async (req, res) => {
     // 4. GET /api/clientes
     if (pathname === '/clientes' && method === 'GET') {
       const busca = url.searchParams.get('busca') || '';
-      const { data, error } = await supabase
+      const { vendedorId } = await obterFiltroVendedor();
+
+      let query = supabase
         .from('vendas')
         .select(`
           id,
@@ -493,12 +717,17 @@ module.exports = async (req, res) => {
           mes_ano_competencia,
           pagamento_id,
           captacao_id,
+          vendedor_id,
           clientes!inner (nome),
           contratos!inner (numero),
-          cotas!inner (numero, grupos!inner (numero))
-        `)
-        .order('data_venda', { ascending: false });
+          cotas!inner (numero, grupos!inner (numero)),
+          usuarios (nome)
+        `);
 
+      if (vendedorId) query = query.eq('vendedor_id', vendedorId);
+      query = query.order('data_venda', { ascending: false });
+
+      const { data, error } = await query;
       if (error) throw error;
 
       let formatados = (data || []).map(v => ({
@@ -511,7 +740,9 @@ module.exports = async (req, res) => {
         data_venda: v.data_venda,
         mes_ano_competencia: v.mes_ano_competencia,
         pagamento_id: v.pagamento_id,
-        captacao_id: v.captacao_id
+        captacao_id: v.captacao_id,
+        vendedor_id: v.vendedor_id,
+        vendedor_nome: v.usuarios?.nome
       }));
 
       if (busca && busca.trim()) {
@@ -528,7 +759,9 @@ module.exports = async (req, res) => {
     // 5. GET /api/contratos
     if (pathname === '/contratos' && method === 'GET') {
       const busca = url.searchParams.get('busca') || '';
-      const { data, error } = await supabase
+      const { vendedorId } = await obterFiltroVendedor();
+
+      let query = supabase
         .from('vendas')
         .select(`
           id,
@@ -537,13 +770,18 @@ module.exports = async (req, res) => {
           mes_ano_competencia,
           pagamento_id,
           captacao_id,
+          vendedor_id,
           contratos!inner (numero),
           clientes!inner (nome),
           cotas!inner (numero, grupos!inner (numero)),
-          pagamentos!inner (nome)
-        `)
-        .order('data_venda', { ascending: false });
+          pagamentos!inner (nome),
+          usuarios (nome)
+        `);
 
+      if (vendedorId) query = query.eq('vendedor_id', vendedorId);
+      query = query.order('data_venda', { ascending: false });
+
+      const { data, error } = await query;
       if (error) throw error;
 
       let formatados = (data || []).map(v => ({
@@ -557,7 +795,9 @@ module.exports = async (req, res) => {
         mes_ano_competencia: v.mes_ano_competencia,
         forma_pagamento: v.pagamentos?.nome,
         pagamento_id: v.pagamento_id,
-        captacao_id: v.captacao_id
+        captacao_id: v.captacao_id,
+        vendedor_id: v.vendedor_id,
+        vendedor_nome: v.usuarios?.nome
       }));
 
       if (busca && busca.trim()) {
@@ -574,10 +814,12 @@ module.exports = async (req, res) => {
     // 6. GET /api/relatorios
     if (pathname === '/relatorios' && method === 'GET') {
       const mesAno = url.searchParams.get('mesAno');
+      const { vendedorId } = await obterFiltroVendedor();
 
-      const { data: todas, error: errTodas } = await supabase
-        .from('vendas')
-        .select('valor_credito, mes_ano_competencia');
+      let query = supabase.from('vendas').select('valor_credito, mes_ano_competencia, vendedor_id');
+      if (vendedorId) query = query.eq('vendedor_id', vendedorId);
+
+      const { data: todas, error: errTodas } = await query;
       if (errTodas) throw errTodas;
 
       const totalGeral = (todas || []).reduce((acc, curr) => acc + Number(curr.valor_credito), 0);
@@ -599,44 +841,35 @@ module.exports = async (req, res) => {
     // 7. GET /api/vendas-por-mes
     if (pathname === '/vendas-por-mes' && method === 'GET') {
       let mesAno = url.searchParams.get('mesAno');
+      const { vendedorId } = await obterFiltroVendedor();
 
-      let query;
-      if (mesAno && mesAno !== 'todas') {
-        query = supabase
-          .from('vendas')
-          .select(`
-            id,
-            valor_credito,
-            data_venda,
-            mes_ano_competencia,
-            pagamento_id,
-            captacao_id,
-            clientes!inner (nome),
-            contratos!inner (numero),
-            cotas!inner (numero, grupos!inner (numero)),
-            pagamentos!inner (nome),
-            captacoes!inner (nome)
-          `)
-          .eq('mes_ano_competencia', mesAno)
-          .order('data_venda', { ascending: false });
-      } else {
-        query = supabase
-          .from('vendas')
-          .select(`
-            id,
-            valor_credito,
-            data_venda,
-            mes_ano_competencia,
-            pagamento_id,
-            captacao_id,
-            clientes!inner (nome),
-            contratos!inner (numero),
-            cotas!inner (numero, grupos!inner (numero)),
-            pagamentos!inner (nome),
-            captacoes!inner (nome)
-          `)
-          .order('data_venda', { ascending: false });
+      let query = supabase
+        .from('vendas')
+        .select(`
+          id,
+          valor_credito,
+          data_venda,
+          mes_ano_competencia,
+          pagamento_id,
+          captacao_id,
+          vendedor_id,
+          clientes!inner (nome),
+          contratos!inner (numero),
+          cotas!inner (numero, grupos!inner (numero)),
+          pagamentos!inner (nome),
+          captacoes!inner (nome),
+          usuarios (nome)
+        `);
+
+      if (vendedorId) {
+        query = query.eq('vendedor_id', vendedorId);
       }
+
+      if (mesAno && mesAno !== 'todas') {
+        query = query.eq('mes_ano_competencia', mesAno);
+      }
+
+      query = query.order('data_venda', { ascending: false });
 
       const { data, error } = await query;
       if (error) throw error;
@@ -653,7 +886,9 @@ module.exports = async (req, res) => {
         forma_captacao: v.captacoes?.nome,
         pagamento_id: v.pagamento_id,
         captacao_id: v.captacao_id,
-        mes_ano_competencia: v.mes_ano_competencia
+        mes_ano_competencia: v.mes_ano_competencia,
+        vendedor_id: v.vendedor_id,
+        vendedor_nome: v.usuarios?.nome
       }));
 
       return res.json({
