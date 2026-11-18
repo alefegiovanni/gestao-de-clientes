@@ -180,7 +180,7 @@
               <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
               <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
             </svg>
-            <span>Equipe & Usuários</span>
+            <span>Gerenciar Equipe</span>
           </a>
         </li>
         <li style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border-color);">
@@ -204,17 +204,21 @@
     <div class="main-wrapper">
       <main class="main-content">
 
-        <!-- Barra de Filtro de Vendedor (Exclusiva da Gerente) -->
+        <!-- Barra de Seleção de Vendedores (Exclusiva da Gerente) -->
         <div id="barFiltroVendedorGlobal" class="filtro-vendedor-bar" style="display: none;">
-          <div class="filtro-vendedor-content">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2">
-              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
-            </svg>
-            <span class="filtro-vendedor-label">Visão da Gerente:</span>
-            <select id="selectFiltroVendedor" class="form-select filtro-vendedor-select">
-              <option value="todos">Toda a Equipe (Consolidado)</option>
-            </select>
-            <span style="font-size: 0.8rem; color: #3b82f6;">(Selecione para filtrar os dados por um vendedor específico)</span>
+          <div class="filtro-vendedor-topo">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div class="filtro-vendedor-avatar-icon">👑</div>
+              <div>
+                <span class="filtro-vendedor-label">Painel da Gerente</span>
+                <span class="filtro-vendedor-sub">Clique em um vendedor para ver somente os clientes, contratos e vendas dele:</span>
+              </div>
+            </div>
+            <div id="statusFiltroAtivo" class="filtro-vendedor-status">Visualizando: <strong>Toda a Equipe</strong></div>
+          </div>
+          <!-- Pílulas / Botões clicáveis com cada vendedor -->
+          <div class="vendedores-chips-container" id="vendedoresChipsContainer">
+            <!-- Chips gerados dinamicamente via JS -->
           </div>
         </div>
 
@@ -225,7 +229,7 @@
             <p class="page-description">Visão geral do desempenho e indicadores de vendas</p>
           </div>
 
-          <!-- 4 Cards Indicadores -->
+          <!-- Grid de Indicadores e Comissões -->
           <div class="cards-grid">
             <!-- Card 1: Vendas no mês -->
             <div class="indicator-card">
@@ -258,32 +262,32 @@
               </div>
             </div>
 
-            <!-- Card 3: Ticket Médio -->
-            <div class="indicator-card">
-              <div class="indicator-icon">
+            <!-- Card 3: Minha Comissão (Vendedor) / Comissão da Equipe (Gerente) -->
+            <div class="indicator-card" style="border-left: 4px solid #16a34a;">
+              <div class="indicator-icon" style="background-color: #dcfce7; color: #15803d;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                  <path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
                 </svg>
               </div>
               <div class="indicator-info">
-                <span class="indicator-label">Ticket Médio</span>
-                <span class="indicator-value" id="cardTicketMedio">R$ 0,00</span>
-                <span class="indicator-sub">Valor médio por crédito</span>
+                <span class="indicator-label" id="labelCardComissaoVendedor">Minha Comissão</span>
+                <span class="indicator-value" id="cardComissaoVendedor" style="color: #15803d;">R$ 0,00</span>
+                <span class="indicator-sub" id="subCardComissaoVendedor">Comissão a receber</span>
               </div>
             </div>
 
-            <!-- Card 4: Clientes Cadastrados -->
-            <div class="indicator-card">
-              <div class="indicator-icon">
+            <!-- Card 4: Comissão da Gerente (Exclusivo Gerente) / Ticket Médio (Vendedor) -->
+            <div class="indicator-card" id="cardComissaoGerenteWrapper" style="border-left: 4px solid #2563eb;">
+              <div class="indicator-icon" style="background-color: #dbeafe; color: #1d4ed8;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                  <circle cx="9" cy="7" r="4"></circle>
+                  <circle cx="12" cy="8" r="7"></circle>
+                  <polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline>
                 </svg>
               </div>
               <div class="indicator-info">
-                <span class="indicator-label">Clientes Cadastrados</span>
-                <span class="indicator-value" id="cardQtdClientes">0</span>
-                <span class="indicator-sub">Base ativa</span>
+                <span class="indicator-label" id="labelCardComissaoGerente">Comissão Gerente</span>
+                <span class="indicator-value" id="cardComissaoGerente" style="color: #1d4ed8;">R$ 0,00</span>
+                <span class="indicator-sub" id="subCardComissaoGerente">Ganho sobre vendas da equipe</span>
               </div>
             </div>
           </div>
@@ -383,6 +387,37 @@
                   <label class="form-label" for="campoVendedorId">Vendedor Responsável <span class="req">*</span></label>
                   <select id="campoVendedorId" class="form-select"></select>
                   <span class="form-help">Como gerente, selecione qual vendedor da equipe realizou esta venda</span>
+                </div>
+
+                <!-- Bloco de Comissão da Gerente na Nova Venda -->
+                <div class="form-group col-span-2" id="grupoComissoesNovaVenda" style="display: none; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 14px; margin-top: 6px;">
+                  <div style="font-weight: 700; font-size: 0.88rem; color: #1e3a8a; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+                    <span>💼 Parâmetros de Comissão (Autonomia da Gerente)</span>
+                  </div>
+                  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+                    <div>
+                      <label class="form-label" for="campoComissaoVendedorPct">Comissão Vendedor (%)</label>
+                      <input type="number" id="campoComissaoVendedorPct" class="form-input" step="0.01" min="0" max="100" placeholder="Ex: 1.0">
+                      <span class="form-help">Porcentagem sobre o crédito</span>
+                    </div>
+                    <div>
+                      <label class="form-label" for="campoComissaoMeses">Prazo de Pagamento</label>
+                      <select id="campoComissaoMeses" class="form-select">
+                        <option value="1">À vista (1 mês)</option>
+                        <option value="2">Dividido em 2 meses</option>
+                        <option value="3" selected>Dividido em 3 meses</option>
+                        <option value="4">Dividido em 4 meses</option>
+                        <option value="6">Dividido em 6 meses</option>
+                        <option value="12">Dividido em 12 meses</option>
+                      </select>
+                      <span class="form-help">Tempo para receber</span>
+                    </div>
+                    <div>
+                      <label class="form-label" for="campoComissaoGerentePct">Comissão Gerente (%)</label>
+                      <input type="number" id="campoComissaoGerentePct" class="form-input" step="0.01" min="0" max="100" placeholder="Ex: 0.5">
+                      <span class="form-help">Seu ganho sobre esta venda</span>
+                    </div>
+                  </div>
                 </div>
 
               </div>
@@ -630,25 +665,25 @@
               <h1 class="page-title">Gestão da Equipe & Usuários</h1>
               <p class="page-description">Cadastre e gerencie os acessos de login dos 6 vendedores e da gerente</p>
             </div>
-            <button id="btnNovoUsuario" class="btn btn-primary" style="display: flex; align-items: center; gap: 8px;">
+            <button id="btnNovoUsuario" class="btn btn-primary">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="12" y1="5" x2="12" y2="19"></line>
                 <line x1="5" y1="12" x2="19" y2="12"></line>
               </svg>
-              <span>+ Novo Usuário</span>
+              <span>Novo Usuário</span>
             </button>
           </div>
 
           <div class="table-card">
             <div class="table-responsive">
-              <table class="data-table">
+              <table class="custom-table">
                 <thead>
                   <tr>
                     <th>NOME COMPLETO</th>
                     <th>LOGIN (USUÁRIO)</th>
                     <th>PERFIL</th>
                     <th>DATA DE CADASTRO</th>
-                    <th style="text-align: right;">AÇÕES</th>
+                    <th style="text-align: center;">AÇÕES</th>
                   </tr>
                 </thead>
                 <tbody id="tabelaUsuariosCorpo">
@@ -667,7 +702,7 @@
   <div id="modalUsuario" class="modal-overlay" style="display: none;">
     <div class="modal-card" style="max-width: 480px;">
       <div class="modal-header">
-        <h3 style="font-size: 1.2rem; font-weight: 700; color: var(--text-main);" id="modalUsuarioTitulo">Novo Usuário</h3>
+        <h3 style="font-size: 1.2rem; font-weight: 700; color: var(--text-main);" id="tituloModalUsuario">Novo Usuário</h3>
         <button type="button" class="modal-close" id="btnFecharModalUsuario">&times;</button>
       </div>
       <form id="formUsuario" autocomplete="off">
@@ -684,8 +719,8 @@
           </div>
           <div class="form-group">
             <label class="form-label" for="usuarioSenha">Senha PIN (4 dígitos) <span class="req" id="reqSenha">*</span></label>
-            <input type="password" id="usuarioSenha" class="form-input" placeholder="Ex: 1234" maxlength="4" pattern="\d{4}" inputmode="numeric" required>
-            <span class="form-help" id="helpSenha">Exatamente 4 números</span>
+            <input type="password" id="usuarioSenha" class="form-input" placeholder="Ex: 1234" maxlength="4" pattern="\d{4}" inputmode="numeric">
+            <span class="form-help" id="hintSenhaUsuario" style="display: none; color: #2563eb;">Deixe em branco para manter a senha atual.</span>
           </div>
           <div class="form-group">
             <label class="form-label" for="usuarioPerfil">Perfil de Acesso <span class="req">*</span></label>
@@ -693,6 +728,11 @@
               <option value="vendedor">Vendedor (Visualiza apenas suas próprias vendas)</option>
               <option value="gerente">Gerente (Visão total da equipe e gerência de usuários)</option>
             </select>
+          </div>
+          <div class="form-group" id="grupoComissaoPadraoUsuario">
+            <label class="form-label" for="usuarioComissaoPadrao">Comissão Padrão do Vendedor (%)</label>
+            <input type="number" id="usuarioComissaoPadrao" class="form-input" step="0.01" min="0" max="100" placeholder="Ex: 1.0" value="1.0">
+            <span class="form-help">Porcentagem inicial sugerida para as vendas deste vendedor</span>
           </div>
         </div>
         <div class="modal-actions" style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
@@ -764,6 +804,34 @@
             <label class="form-label" for="editVendedorId">Vendedor Responsável</label>
             <select id="editVendedorId" class="form-select"></select>
           </div>
+
+          <!-- Bloco de Comissão no Modal de Edição (Gerente) -->
+          <div class="form-group col-span-2" id="grupoComissoesModalEdicao" style="display: none; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 14px;">
+            <div style="font-weight: 700; font-size: 0.88rem; color: #1e3a8a; margin-bottom: 10px;">
+              💼 Ajuste de Comissão desta Venda
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+              <div>
+                <label class="form-label" for="editComissaoVendedorPct">Comissão Vendedor (%)</label>
+                <input type="number" id="editComissaoVendedorPct" class="form-input" step="0.01" min="0" max="100">
+              </div>
+              <div>
+                <label class="form-label" for="editComissaoMeses">Prazo (Meses)</label>
+                <select id="editComissaoMeses" class="form-select">
+                  <option value="1">1 mês</option>
+                  <option value="2">2 meses</option>
+                  <option value="3">3 meses</option>
+                  <option value="4">4 meses</option>
+                  <option value="6">6 meses</option>
+                  <option value="12">12 meses</option>
+                </select>
+              </div>
+              <div>
+                <label class="form-label" for="editComissaoGerentePct">Comissão Gerente (%)</label>
+                <input type="number" id="editComissaoGerentePct" class="form-input" step="0.01" min="0" max="100">
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="form-actions" style="margin-top: 20px; display: flex; justify-content: space-between;">
@@ -775,6 +843,35 @@
             <button type="submit" class="btn btn-primary" id="btnSalvarEdicao">Salvar Alterações</button>
           </div>
         </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Obrigatório de Troca de Senha no Primeiro Acesso -->
+  <div id="modalPrimeiroAcesso" class="modal-overlay" style="display: none; z-index: 10001; background: rgba(15, 23, 42, 0.85);">
+    <div class="modal-card" style="max-width: 440px; border-top: 4px solid var(--primary); text-align: center;">
+      <div style="font-size: 2.2rem; margin-bottom: 8px;">🔐</div>
+      <h3 style="font-size: 1.25rem; font-weight: 700; color: var(--text-main); margin-bottom: 6px;">Primeiro Acesso ao Sistema</h3>
+      <p style="font-size: 0.86rem; color: var(--text-muted); margin-bottom: 20px;">
+        Olá! Por segurança, crie a sua <strong>nova senha pessoal de 4 dígitos</strong> para continuar utilizando o sistema.
+      </p>
+
+      <form id="formPrimeiroAcesso" autocomplete="off">
+        <div class="form-group" style="text-align: left; margin-bottom: 14px;">
+          <label class="form-label" for="novaSenhaPrimeiroAcesso">Nova Senha (4 números) <span class="req">*</span></label>
+          <input type="password" id="novaSenhaPrimeiroAcesso" class="form-input" inputmode="numeric" maxlength="4" placeholder="••••" required style="letter-spacing: 4px; font-size: 1.2rem; text-align: center; height: 46px;">
+        </div>
+
+        <div class="form-group" style="text-align: left; margin-bottom: 16px;">
+          <label class="form-label" for="confirmaSenhaPrimeiroAcesso">Confirmar Nova Senha <span class="req">*</span></label>
+          <input type="password" id="confirmaSenhaPrimeiroAcesso" class="form-input" inputmode="numeric" maxlength="4" placeholder="••••" required style="letter-spacing: 4px; font-size: 1.2rem; text-align: center; height: 46px;">
+        </div>
+
+        <div id="erroPrimeiroAcesso" style="color: #ef4444; font-size: 0.84rem; margin-bottom: 14px; display: none;"></div>
+
+        <button type="submit" class="btn btn-primary" style="width: 100%; height: 46px; font-size: 0.96rem;">
+          Salvar Minha Nova Senha e Entrar
+        </button>
       </form>
     </div>
   </div>

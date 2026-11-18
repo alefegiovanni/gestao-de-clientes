@@ -71,7 +71,7 @@ app.post('/api/login', (req, res) => {
 
     let u = null;
     try {
-      u = db.prepare('SELECT id, nome, usuario, senha, perfil FROM usuarios WHERE usuario = ? COLLATE NOCASE').get(userLimpo);
+      u = db.prepare('SELECT id, nome, usuario, senha, perfil, primeiro_acesso FROM usuarios WHERE usuario = ? COLLATE NOCASE').get(userLimpo);
     } catch (e) {}
 
     if (u) {
@@ -83,7 +83,8 @@ app.post('/api/login', (req, res) => {
             id: u.id,
             nome: u.nome,
             usuario: u.usuario,
-            perfil: u.perfil
+            perfil: u.perfil,
+            primeiroAcesso: u.primeiro_acesso === 1
           }
         });
       } else {
@@ -119,7 +120,7 @@ app.post('/api/login', (req, res) => {
 app.get('/api/vendedores', (req, res) => {
   try {
     const vendedores = db.prepare(`
-      SELECT id, nome, usuario 
+      SELECT id, nome, usuario, comissao_padrao_pct 
       FROM usuarios 
       WHERE perfil = 'vendedor' 
       ORDER BY nome ASC
@@ -138,7 +139,7 @@ app.get('/api/usuarios', (req, res) => {
       return res.status(403).json({ error: 'Acesso restrito à Gerente.' });
     }
     const usuarios = db.prepare(`
-      SELECT id, nome, usuario, perfil, criado_em 
+      SELECT id, nome, usuario, perfil, criado_em, primeiro_acesso, comissao_padrao_pct 
       FROM usuarios 
       ORDER BY id ASC
     `).all();
@@ -154,7 +155,7 @@ app.post('/api/usuarios', (req, res) => {
     if (!userAuth || userAuth.perfil !== 'gerente') {
       return res.status(403).json({ error: 'Acesso restrito à Gerente.' });
     }
-    const { nome, usuario, senha, perfil } = req.body;
+    const { nome, usuario, senha, perfil, comissaoPadraoPct } = req.body;
     if (!nome || !nome.trim()) return res.status(400).json({ error: 'O nome é obrigatório.' });
     if (!usuario || !usuario.trim()) return res.status(400).json({ error: 'O usuário de login é obrigatório.' });
     if (!senha || !/^\d{4}$/.test(String(senha).trim())) {
@@ -162,17 +163,18 @@ app.post('/api/usuarios', (req, res) => {
     }
     const perfilValido = perfil === 'gerente' ? 'gerente' : 'vendedor';
     const userNorm = usuario.trim().toLowerCase();
+    const comPadrao = comissaoPadraoPct !== undefined && comissaoPadraoPct !== '' ? parseFloat(comissaoPadraoPct) : 1.0;
 
     const existe = db.prepare('SELECT id FROM usuarios WHERE usuario = ? COLLATE NOCASE').get(userNorm);
     if (existe) return res.status(400).json({ error: 'Este nome de usuário já está cadastrado.' });
 
-    const insert = db.prepare('INSERT INTO usuarios (nome, usuario, senha, perfil) VALUES (?, ?, ?, ?)');
-    const result = insert.run(nome.trim(), userNorm, String(senha).trim(), perfilValido);
+    const insert = db.prepare('INSERT INTO usuarios (nome, usuario, senha, perfil, comissao_padrao_pct) VALUES (?, ?, ?, ?, ?)');
+    const result = insert.run(nome.trim(), userNorm, String(senha).trim(), perfilValido, comPadrao);
 
     res.status(201).json({
       success: true,
       message: 'Usuário cadastrado com sucesso!',
-      usuario: { id: result.lastInsertRowid, nome: nome.trim(), usuario: userNorm, perfil: perfilValido }
+      usuario: { id: result.lastInsertRowid, nome: nome.trim(), usuario: userNorm, perfil: perfilValido, comissao_padrao_pct: comPadrao }
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -186,7 +188,7 @@ app.put('/api/usuarios/:id', (req, res) => {
       return res.status(403).json({ error: 'Acesso restrito à Gerente.' });
     }
     const userId = req.params.id;
-    const { nome, usuario, senha, perfil } = req.body;
+    const { nome, usuario, senha, perfil, comissaoPadraoPct } = req.body;
     if (!nome || !nome.trim()) return res.status(400).json({ error: 'O nome é obrigatório.' });
     if (!usuario || !usuario.trim()) return res.status(400).json({ error: 'O usuário de login é obrigatório.' });
     const userNorm = usuario.trim().toLowerCase();
@@ -195,16 +197,23 @@ app.put('/api/usuarios/:id', (req, res) => {
     if (outro) return res.status(400).json({ error: 'Este nome de usuário já pertence a outro membro.' });
 
     const perfilValido = perfil === 'gerente' ? 'gerente' : 'vendedor';
+    const comPadrao = comissaoPadraoPct !== undefined && comissaoPadraoPct !== '' ? parseFloat(comissaoPadraoPct) : 1.0;
 
     if (senha && String(senha).trim()) {
       if (!/^\d{4}$/.test(String(senha).trim())) {
         return res.status(400).json({ error: 'A nova senha deve conter exatamente 4 números.' });
       }
-      db.prepare('UPDATE usuarios SET nome = ?, usuario = ?, senha = ?, perfil = ? WHERE id = ?')
-        .run(nome.trim(), userNorm, String(senha).trim(), perfilValido, userId);
+      db.prepare('UPDATE usuarios SET nome = ?, usuario = ?, senha = ?, perfil = ?, comissao_padrao_pct = ? WHERE id = ?')
+        .run(nome.trim(), userNorm, String(senha).trim(), perfilValido, comPadrao, userId);
     } else {
-      db.prepare('UPDATE usuarios SET nome = ?, usuario = ?, perfil = ? WHERE id = ?')
-        .run(nome.trim(), userNorm, perfilValido, userId);
+      db.prepare('UPDATE usuarios SET nome = ?, usuario = ?, perfil = ?, comissao_padrao_pct = ? WHERE id = ?')
+        .run(nome.trim(), userNorm, perfilValido, comPadrao, userId);
+    }
+
+    // Se for vendedor e comissão padrão foi alterada, atualiza as vendas do vendedor
+    if (perfilValido === 'vendedor') {
+      db.prepare('UPDATE vendas SET comissao_vendedor_pct = ? WHERE vendedor_id = ?')
+        .run(comPadrao, userId);
     }
 
     res.json({ success: true, message: 'Usuário atualizado com sucesso!' });
@@ -220,8 +229,11 @@ app.delete('/api/usuarios/:id', (req, res) => {
       return res.status(403).json({ error: 'Acesso restrito à Gerente.' });
     }
     const userId = req.params.id;
-    if (Number(userId) === Number(userAuth.id)) {
-      return res.status(400).json({ error: 'Você não pode excluir o seu próprio usuário logado.' });
+
+    // Verificar se usuário existe
+    const usuarioAlvo = db.prepare('SELECT id, nome, perfil FROM usuarios WHERE id = ?').get(userId);
+    if (!usuarioAlvo) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
     }
 
     const totalVendas = db.prepare('SELECT count(*) as count FROM vendas WHERE vendedor_id = ?').get(userId).count;
@@ -233,6 +245,27 @@ app.delete('/api/usuarios/:id', (req, res) => {
 
     db.prepare('DELETE FROM usuarios WHERE id = ?').run(userId);
     res.json({ success: true, message: 'Usuário excluído com sucesso!' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Rota para troca de senha no primeiro acesso
+app.post('/api/alterar-senha-primeiro-acesso', (req, res) => {
+  try {
+    const userAuth = obterUsuarioAuth(req);
+    if (!userAuth) {
+      return res.status(401).json({ error: 'Usuário não autenticado.' });
+    }
+    const { novaSenha } = req.body;
+    if (!novaSenha || !/^\d{4}$/.test(String(novaSenha).trim())) {
+      return res.status(400).json({ error: 'A nova senha deve conter exatamente 4 números.' });
+    }
+
+    db.prepare('UPDATE usuarios SET senha = ?, primeiro_acesso = 0 WHERE id = ?')
+      .run(String(novaSenha).trim(), userAuth.id);
+
+    res.json({ success: true, message: 'Senha atualizada com sucesso! Bem-vindo(a) ao sistema.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -283,6 +316,23 @@ app.post('/api/opcoes/pagamentos', (req, res) => {
   }
 });
 
+// Excluir opção de pagamento
+app.delete('/api/opcoes/pagamentos/:id', (req, res) => {
+  try {
+    const id = req.params.id;
+    const emUso = db.prepare('SELECT count(*) as count FROM vendas WHERE pagamento_id = ?').get(id).count;
+    if (emUso > 0) {
+      return res.status(400).json({
+        error: `Não é possível excluir esta forma de pagamento pois ela está vinculada a ${emUso} venda(s) cadastrada(s).`
+      });
+    }
+    db.prepare('DELETE FROM pagamentos WHERE id = ?').run(id);
+    res.json({ success: true, message: 'Forma de pagamento excluída com sucesso!' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Cadastrar nova opção de captação
 app.post('/api/opcoes/captacoes', (req, res) => {
   try {
@@ -296,10 +346,27 @@ app.post('/api/opcoes/captacoes', (req, res) => {
   }
 });
 
-// 2. DASHBOARD - 4 Indicadores
+// Excluir opção de captação
+app.delete('/api/opcoes/captacoes/:id', (req, res) => {
+  try {
+    const id = req.params.id;
+    const emUso = db.prepare('SELECT count(*) as count FROM vendas WHERE captacao_id = ?').get(id).count;
+    if (emUso > 0) {
+      return res.status(400).json({
+        error: `Não é possível excluir este canal de captação pois ele está vinculado a ${emUso} venda(s) cadastrada(s).`
+      });
+    }
+    db.prepare('DELETE FROM captacoes WHERE id = ?').run(id);
+    res.json({ success: true, message: 'Forma de captação excluída com sucesso!' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2. DASHBOARD - Indicadores e Resumo de Comissões
 app.get('/api/dashboard', (req, res) => {
   try {
-    const { vendedorId, isGerente } = obterFiltroVendedor(req);
+    const { vendedorId, isGerente, user } = obterFiltroVendedor(req);
     const competenciaAtual = obterCompetenciaAtual();
 
     let sqlVendasQuery = 'SELECT COALESCE(SUM(valor_credito), 0) as total_mes FROM vendas WHERE mes_ano_competencia = ?';
@@ -328,12 +395,42 @@ app.get('/api/dashboard', (req, res) => {
     const sqlTicketMedio = db.prepare(sqlTicketQuery).get(...pTicket);
     const sqlClientes = db.prepare(sqlClientesQuery).get(...pClientes);
 
+    // Cálculos de Comissão
+    let totalComissaoVendedor = 0;
+    let totalComissaoGerente = 0;
+
+    if (isGerente) {
+      // Gerente vê sua comissão geral ou do vendedor filtrado
+      let sqlComissaoGerente = 'SELECT COALESCE(SUM(valor_credito * (comissao_gerente_pct / 100.0)), 0) as total FROM vendas WHERE 1=1';
+      const pCG = [];
+      if (vendedorId) {
+        sqlComissaoGerente += ' AND vendedor_id = ?';
+        pCG.push(vendedorId);
+      }
+      totalComissaoGerente = db.prepare(sqlComissaoGerente).get(...pCG).total;
+
+      // Também calcula comissão dos vendedores
+      let sqlComissaoVend = 'SELECT COALESCE(SUM(valor_credito * (comissao_vendedor_pct / 100.0)), 0) as total FROM vendas WHERE 1=1';
+      const pCV = [];
+      if (vendedorId) {
+        sqlComissaoVend += ' AND vendedor_id = ?';
+        pCV.push(vendedorId);
+      }
+      totalComissaoVendedor = db.prepare(sqlComissaoVend).get(...pCV).total;
+    } else if (user) {
+      // Vendedor comum vê apenas a sua comissão
+      const sqlComissaoVend = db.prepare('SELECT COALESCE(SUM(valor_credito * (comissao_vendedor_pct / 100.0)), 0) as total FROM vendas WHERE vendedor_id = ?').get(user.id);
+      totalComissaoVendedor = sqlComissaoVend ? sqlComissaoVend.total : 0;
+    }
+
     res.json({
       competenciaAtual,
       vendasNoMes: sqlVendasMes.total_mes,
       quantidadeVendas: sqlQtdVendas.qtd_vendas,
       ticketMedio: sqlTicketMedio.ticket_medio,
       clientesCadastrados: sqlClientes.qtd_clientes,
+      totalComissaoVendedor,
+      totalComissaoGerente,
       isGerente
     });
   } catch (err) {
@@ -355,13 +452,33 @@ app.post('/api/vendas', (req, res) => {
       numeroContrato,
       formaCaptacaoId,
       mesAnoCompetencia: mesCompetenciaInformado,
-      vendedorId: vendedorEscolhido
+      vendedorId: vendedorEscolhido,
+      comissaoVendedorPct,
+      comissaoMeses,
+      comissaoGerentePct
     } = req.body;
 
     // Se for vendedor, obrigatoriamente vincula a si mesmo. Se for gerente, pode escolher ou assume o seu id.
     let vendedorIdFinal = userAuth ? userAuth.id : 1;
     if (userAuth && userAuth.perfil === 'gerente' && vendedorEscolhido) {
       vendedorIdFinal = Number(vendedorEscolhido);
+    }
+
+    // Porcentagens de comissão (autonomia da gerente)
+    let comVendPct = 0;
+    let comMesesQtd = 1;
+    let comGerPct = 0;
+
+    if (userAuth && userAuth.perfil === 'gerente') {
+      comVendPct = comissaoVendedorPct !== undefined && comissaoVendedorPct !== '' ? parseFloat(comissaoVendedorPct) : 1.0;
+      comMesesQtd = comissaoMeses ? parseInt(comissaoMeses, 10) : 1;
+      comGerPct = comissaoGerentePct !== undefined && comissaoGerentePct !== '' ? parseFloat(comissaoGerentePct) : 0.5;
+    } else {
+      // Se for vendedor cadastrando, herda a comissão padrão definida para ele
+      const vendData = db.prepare('SELECT comissao_padrao_pct FROM usuarios WHERE id = ?').get(vendedorIdFinal);
+      comVendPct = vendData ? vendData.comissao_padrao_pct : 1.0;
+      comMesesQtd = 1;
+      comGerPct = 0.5;
     }
 
     // Validações obrigatórias
@@ -433,7 +550,7 @@ app.post('/api/vendas', (req, res) => {
       const resContrato = db.prepare('INSERT INTO contratos (numero, cliente_id) VALUES (?, ?)').run(contratoNormalizado, cliente.id);
       const contratoId = resContrato.lastInsertRowid;
 
-      // 6. Venda: inserir com vendedor_id
+      // 6. Venda: inserir com vendedor_id e comissões
       const resVenda = db.prepare(`
         INSERT INTO vendas (
           cliente_id,
@@ -444,8 +561,11 @@ app.post('/api/vendas', (req, res) => {
           valor_credito,
           data_venda,
           mes_ano_competencia,
-          vendedor_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          vendedor_id,
+          comissao_vendedor_pct,
+          comissao_meses,
+          comissao_gerente_pct
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         cliente.id,
         contratoId,
@@ -455,7 +575,10 @@ app.post('/api/vendas', (req, res) => {
         valCreditoNum,
         dataVenda,
         mesAnoCompetencia,
-        vendedorIdFinal
+        vendedorIdFinal,
+        comVendPct,
+        comMesesQtd,
+        comGerPct
       );
 
       return resVenda.lastInsertRowid;
@@ -554,6 +677,18 @@ app.put('/api/vendas/:id', (req, res) => {
         novoVendedorId = Number(vendedorEscolhido);
       }
 
+      // Atualizar comissões se gerente enviou
+      let comVendPct = vendaAtual.comissao_vendedor_pct || 0;
+      let comMesesQtd = vendaAtual.comissao_meses || 1;
+      let comGerPct = vendaAtual.comissao_gerente_pct || 0;
+
+      if (userAuth && userAuth.perfil === 'gerente') {
+        const { comissaoVendedorPct, comissaoMeses, comissaoGerentePct } = req.body;
+        if (comissaoVendedorPct !== undefined && comissaoVendedorPct !== '') comVendPct = parseFloat(comissaoVendedorPct);
+        if (comissaoMeses !== undefined && comissaoMeses !== '') comMesesQtd = parseInt(comissaoMeses, 10);
+        if (comissaoGerentePct !== undefined && comissaoGerentePct !== '') comGerPct = parseFloat(comissaoGerentePct);
+      }
+
       db.prepare(`
         UPDATE vendas SET
           cliente_id = ?,
@@ -563,7 +698,10 @@ app.put('/api/vendas/:id', (req, res) => {
           valor_credito = ?,
           data_venda = ?,
           mes_ano_competencia = ?,
-          vendedor_id = ?
+          vendedor_id = ?,
+          comissao_vendedor_pct = ?,
+          comissao_meses = ?,
+          comissao_gerente_pct = ?
         WHERE id = ?
       `).run(
         cliente.id,
@@ -574,6 +712,9 @@ app.put('/api/vendas/:id', (req, res) => {
         dataVenda,
         mesAnoCompetencia,
         novoVendedorId,
+        comVendPct,
+        comMesesQtd,
+        comGerPct,
         vendaId
       );
     });
@@ -773,7 +914,10 @@ app.get('/api/vendas-por-mes', (req, res) => {
         cap.nome as forma_captacao,
         v.mes_ano_competencia,
         v.vendedor_id,
-        u.nome as vendedor_nome
+        u.nome as vendedor_nome,
+        COALESCE(v.comissao_vendedor_pct, 0) as comissao_vendedor_pct,
+        COALESCE(v.comissao_meses, 1) as comissao_meses,
+        COALESCE(v.comissao_gerente_pct, 0) as comissao_gerente_pct
       FROM vendas v
       JOIN clientes c ON v.cliente_id = c.id
       JOIN contratos ct ON v.contrato_id = ct.id

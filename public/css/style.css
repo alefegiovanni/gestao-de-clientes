@@ -61,11 +61,11 @@ body {
 }
 
 .sidebar-header {
-  padding: 24px 20px;
+  padding: 18px 16px 14px 16px;
   border-bottom: 1px solid var(--border-color);
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .brand-logo {
@@ -696,6 +696,18 @@ html, body {
   border-color: var(--primary);
 }
 
+.btn-action-danger {
+  color: #dc2626;
+  border-color: #fecaca;
+  background-color: #fef2f2;
+}
+
+.btn-action-danger:hover {
+  background-color: #fee2e2;
+  border-color: #ef4444;
+  color: #b91c1c;
+}
+
 /* LOGIN SCREEN */
 .login-wrapper {
   position: fixed;
@@ -832,36 +844,195 @@ html, body {
   font-weight: 600;
 }
 
-/* BARRA DE FILTRO POR VENDEDOR (GERENTE) */
+/* BARRA DE SELEÇÃO DE VENDEDORES (PAINEL DA GERENTE) */
 .filtro-vendedor-bar {
-  background: #eff6ff;
+  background: #ffffff;
   border: 1px solid #bfdbfe;
-  border-radius: var(--radius-sm);
-  padding: 10px 16px;
-  margin-bottom: 20px;
+  border-left: 4px solid #2563eb;
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
 }
 
-.filtro-vendedor-content {
+.filtro-vendedor-topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed #dbeafe;
+}
+
+.filtro-vendedor-avatar-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #dbeafe;
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 1.1rem;
 }
 
 .filtro-vendedor-label {
-  font-size: 0.88rem;
+  display: block;
+  font-size: 0.95rem;
   font-weight: 700;
-  color: #1e40af;
+  color: #1e3a8a;
+  line-height: 1.2;
 }
 
-.filtro-vendedor-select {
-  padding: 6px 12px;
-  font-size: 0.88rem;
-  border-color: #93c5fd;
-  border-radius: var(--radius-sm);
-  background-color: #ffffff;
-  min-width: 220px;
+.filtro-vendedor-sub {
+  display: block;
+  font-size: 0.8rem;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.filtro-vendedor-status {
+  font-size: 0.84rem;
+  color: #1e40af;
+  background: #eff6ff;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  border: 1px solid #bfdbfe;
+}
+
+.vendedores-chips-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chip-vendedor {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: 9999px;
+  font-size: 0.86rem;
   font-weight: 600;
+  color: #334155;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.chip-vendedor:hover {
+  background: #e2e8f0;
+  border-color: #94a3b8;
+  color: #0f172a;
+  transform: translateY(-1px);
+}
+
+.chip-vendedor.active {
+  background: #2563eb;
+  border-color: #1d4ed8;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
+}
+
+.chip-vendedor .chip-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  color: #1e293b;
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chip-vendedor.active .chip-avatar {
+  background: #ffffff;
+  color: #1d4ed8;
+}
+
+/* LISTA DE VENDEDORES NO MENU LATERAL DA GERENTE */
+.sidebar-vendedores-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 8px 8px;
+}
+
+.sidebar-vendedores-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+.sidebar-vendedores-badge {
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 9999px;
+}
+
+.sidebar-vendedores-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sidebar-vendedor-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  font-size: 0.84rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.sidebar-vendedor-btn:hover {
+  background: #f1f5f9;
+  color: var(--primary-dark);
+}
+
+.sidebar-vendedor-btn.active {
+  background: #dcfce7;
+  color: #15803d;
+  font-weight: 700;
+}
+
+.sidebar-vendedor-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sidebar-vendedor-btn.active .sidebar-vendedor-avatar {
+  background: #15803d;
+  color: #ffffff;
 }
 
 /* BADGES DE VENDEDOR E PERFIL */

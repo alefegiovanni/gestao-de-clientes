@@ -88,10 +88,28 @@ function initDb() {
     );
   `);
 
-  // Adicionar coluna vendedor_id na tabela vendas se ainda não existir
+  // Adicionar coluna primeiro_acesso e comissao_padrao_pct na tabela usuarios se ainda não existirem
+  const colsUsuarios = db.prepare("PRAGMA table_info(usuarios)").all().map(c => c.name);
+  if (!colsUsuarios.includes('primeiro_acesso')) {
+    db.exec("ALTER TABLE usuarios ADD COLUMN primeiro_acesso INTEGER DEFAULT 1");
+  }
+  if (!colsUsuarios.includes('comissao_padrao_pct')) {
+    db.exec("ALTER TABLE usuarios ADD COLUMN comissao_padrao_pct REAL DEFAULT 1.0");
+  }
+
+  // Adicionar colunas vendedor_id e de comissão na tabela vendas se ainda não existirem
   const colsVendas = db.prepare("PRAGMA table_info(vendas)").all().map(c => c.name);
   if (!colsVendas.includes('vendedor_id')) {
     db.exec("ALTER TABLE vendas ADD COLUMN vendedor_id INTEGER REFERENCES usuarios(id)");
+  }
+  if (!colsVendas.includes('comissao_vendedor_pct')) {
+    db.exec("ALTER TABLE vendas ADD COLUMN comissao_vendedor_pct REAL DEFAULT 0");
+  }
+  if (!colsVendas.includes('comissao_meses')) {
+    db.exec("ALTER TABLE vendas ADD COLUMN comissao_meses INTEGER DEFAULT 1");
+  }
+  if (!colsVendas.includes('comissao_gerente_pct')) {
+    db.exec("ALTER TABLE vendas ADD COLUMN comissao_gerente_pct REAL DEFAULT 0");
   }
 
   // Seed de usuários padrão se a tabela de usuários estiver vazia

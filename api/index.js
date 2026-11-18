@@ -48,7 +48,7 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, x-usuario-id'
   );
 
   if (req.method === 'OPTIONS') {
@@ -72,7 +72,7 @@ module.exports = async (req, res) => {
       const authId = req.headers['x-usuario-id'] || url.searchParams.get('usuarioAuthId');
       if (!authId) return null;
       try {
-        const { data: user } = await supabase.from('usuarios').select('id, nome, usuario, perfil').eq('id', authId).maybeSingle();
+        const { data: user } = await supabase.from('usuarios').select('id, nome, usuario, perfil, comissao_padrao_pct').eq('id', authId).maybeSingle();
         return user;
       } catch (e) {
         return null;
@@ -100,7 +100,7 @@ module.exports = async (req, res) => {
       try {
         const { data: userDb } = await supabase
           .from('usuarios')
-          .select('id, nome, usuario, senha, perfil')
+          .select('id, nome, usuario, senha, perfil, primeiro_acesso')
           .ilike('usuario', userLimpo)
           .maybeSingle();
 
@@ -113,7 +113,8 @@ module.exports = async (req, res) => {
                 id: userDb.id,
                 nome: userDb.nome,
                 usuario: userDb.usuario,
-                perfil: userDb.perfil
+                perfil: userDb.perfil,
+                primeiroAcesso: userDb.primeiro_acesso === true || userDb.primeiro_acesso === 1
               }
             });
           } else {
@@ -122,29 +123,42 @@ module.exports = async (req, res) => {
         }
       } catch (e) {}
 
-      // Credencial fixa definida pelo usuário ou gravada em config como fallback
+      // Credencial fixa de fallback caso banco não tenha a tabela ainda
       let senhaValida = '3105';
-      try {
-        const { data: conf } = await supabase.from('config').select('valor').eq('chave', 'senha_acesso').maybeSingle();
-        if (conf && conf.valor) senhaValida = conf.valor;
-      } catch (e) {}
-
       if (userLimpo === 'giovanni' && passLimpo === senhaValida) {
         return res.json({
           success: true,
           message: 'Acesso autorizado!',
-          usuario: { id: 1, nome: 'Giovanni', usuario: 'giovanni', perfil: 'vendedor' }
+          usuario: { id: 1, nome: 'Giovanni', usuario: 'giovanni', perfil: 'vendedor', primeiroAcesso: false }
         });
       }
       if (userLimpo === 'gerente' && passLimpo === senhaValida) {
         return res.json({
           success: true,
           message: 'Acesso autorizado!',
-          usuario: { id: 2, nome: 'Gerente', usuario: 'gerente', perfil: 'gerente' }
+          usuario: { id: 2, nome: 'Isabela', usuario: 'gerente', perfil: 'gerente', primeiroAcesso: false }
         });
       }
 
       return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
+    }
+
+    // POST /api/alterar-senha-primeiro-acesso
+    if (pathname === '/alterar-senha-primeiro-acesso' && method === 'POST') {
+      const { usuarioId, novaSenha } = req.body || {};
+      if (!usuarioId) return res.status(400).json({ error: 'Usuário não identificado.' });
+      if (!novaSenha || !/^\d{4}$/.test(String(novaSenha).trim())) {
+        return res.status(400).json({ error: 'A nova senha deve conter exatamente 4 números.' });
+      }
+
+      const { error: errUpd } = await supabase
+        .from('usuarios')
+        .update({ senha: String(novaSenha).trim(), primeiro_acesso: false })
+        .eq('id', usuarioId);
+
+      if (errUpd) throw errUpd;
+
+      return res.json({ success: true, message: 'Senha inicial alterada com sucesso!' });
     }
 
     // GET /api/vendedores - Lista vendedores para filtros
@@ -152,13 +166,13 @@ module.exports = async (req, res) => {
       try {
         const { data: vendedores, error } = await supabase
           .from('usuarios')
-          .select('id, nome, usuario')
+          .select('id, nome, usuario, comissao_padrao_pct')
           .eq('perfil', 'vendedor')
           .order('nome');
         if (error) throw error;
         return res.json(vendedores || []);
       } catch (e) {
-        return res.json([{ id: 1, nome: 'Giovanni', usuario: 'giovanni' }]);
+        return res.json([{ id: 1, nome: 'Giovanni', usuario: 'giovanni', comissao_padrao_pct: 1.0 }]);
       }
     }
 
@@ -170,7 +184,7 @@ module.exports = async (req, res) => {
       }
       const { data: usuarios, error } = await supabase
         .from('usuarios')
-        .select('id, nome, usuario, perfil, criado_em')
+        .select('id, nome, usuario, perfil, criado_em, primeiro_acesso, comissao_padrao_pct')
         .order('id');
       if (error) throw error;
       return res.json(usuarios || []);
@@ -182,7 +196,7 @@ module.exports = async (req, res) => {
       if (!userAuth || userAuth.perfil !== 'gerente') {
         return res.status(403).json({ error: 'Acesso restrito à Gerente.' });
       }
-      const { nome, usuario, senha, perfil } = req.body || {};
+      const { nome, usuario, senha, perfil, comissaoPadraoPct } = req.body || {};
       if (!nome || !nome.trim()) return res.status(400).json({ error: 'O nome é obrigatório.' });
       if (!usuario || !usuario.trim()) return res.status(400).json({ error: 'O usuário de login é obrigatório.' });
       if (!senha || !/^\d{4}$/.test(String(senha).trim())) {
@@ -190,14 +204,22 @@ module.exports = async (req, res) => {
       }
       const perfilValido = perfil === 'gerente' ? 'gerente' : 'vendedor';
       const userNorm = usuario.trim().toLowerCase();
+      const comPadrao = comissaoPadraoPct !== undefined && comissaoPadraoPct !== '' ? parseFloat(comissaoPadraoPct) : 1.0;
 
       const { data: existe } = await supabase.from('usuarios').select('id').ilike('usuario', userNorm).maybeSingle();
       if (existe) return res.status(400).json({ error: 'Este nome de usuário já está cadastrado.' });
 
       const { data: novoUser, error: errNovo } = await supabase
         .from('usuarios')
-        .insert([{ nome: nome.trim(), usuario: userNorm, senha: String(senha).trim(), perfil: perfilValido }])
-        .select('id, nome, usuario, perfil')
+        .insert([{
+          nome: nome.trim(),
+          usuario: userNorm,
+          senha: String(senha).trim(),
+          perfil: perfilValido,
+          comissao_padrao_pct: comPadrao,
+          primeiro_acesso: true
+        }])
+        .select('id, nome, usuario, perfil, comissao_padrao_pct')
         .single();
       if (errNovo) throw errNovo;
 
@@ -216,7 +238,7 @@ module.exports = async (req, res) => {
         return res.status(403).json({ error: 'Acesso restrito à Gerente.' });
       }
       const userId = parseInt(matchPutUser[1], 10);
-      const { nome, usuario, senha, perfil } = req.body || {};
+      const { nome, usuario, senha, perfil, comissaoPadraoPct } = req.body || {};
       if (!nome || !nome.trim()) return res.status(400).json({ error: 'O nome é obrigatório.' });
       if (!usuario || !usuario.trim()) return res.status(400).json({ error: 'O usuário de login é obrigatório.' });
       const userNorm = usuario.trim().toLowerCase();
@@ -230,7 +252,9 @@ module.exports = async (req, res) => {
       if (outro) return res.status(400).json({ error: 'Este nome de usuário já pertence a outro membro.' });
 
       const perfilValido = perfil === 'gerente' ? 'gerente' : 'vendedor';
-      const updateData = { nome: nome.trim(), usuario: userNorm, perfil: perfilValido };
+      const comPadrao = comissaoPadraoPct !== undefined && comissaoPadraoPct !== '' ? parseFloat(comissaoPadraoPct) : 1.0;
+
+      const updateData = { nome: nome.trim(), usuario: userNorm, perfil: perfilValido, comissao_padrao_pct: comPadrao };
       if (senha && String(senha).trim()) {
         if (!/^\d{4}$/.test(String(senha).trim())) {
           return res.status(400).json({ error: 'A nova senha deve conter exatamente 4 números.' });
@@ -240,6 +264,16 @@ module.exports = async (req, res) => {
 
       const { error: errUpd } = await supabase.from('usuarios').update(updateData).eq('id', userId);
       if (errUpd) throw errUpd;
+
+      // Sincronizar comissão padrão com as vendas existentes do vendedor
+      try {
+        await supabase
+          .from('vendas')
+          .update({ comissao_vendedor_pct: comPadrao })
+          .eq('vendedor_id', userId);
+      } catch (eCascade) {
+        console.warn('Aviso ao sincronizar comissão em vendas:', eCascade);
+      }
 
       return res.json({ success: true, message: 'Usuário atualizado com sucesso!' });
     }
@@ -273,11 +307,22 @@ module.exports = async (req, res) => {
       return res.json({ success: true, message: 'Usuário excluído com sucesso!' });
     }
 
-    // POST /api/alterar-pin - Alterar Senha de 4 dígitos
+    // POST /api/alterar-pin - Alterar Senha de 4 dígitos (perfil próprio)
     if (pathname === '/alterar-pin' && method === 'POST') {
       const { pinAtual, novoPin } = req.body || {};
       if (!novoPin || !/^\d{4}$/.test(String(novoPin))) {
         return res.status(400).json({ error: 'A nova senha deve conter exatamente 4 números.' });
+      }
+
+      const userAuth = await obterUsuarioAuth();
+      if (userAuth) {
+        // Se usuário identificado no token/header
+        const { data: u } = await supabase.from('usuarios').select('senha').eq('id', userAuth.id).single();
+        if (u && String(u.senha).trim() !== String(pinAtual).trim()) {
+          return res.status(401).json({ error: 'Senha atual incorreta.' });
+        }
+        await supabase.from('usuarios').update({ senha: String(novoPin).trim() }).eq('id', userAuth.id);
+        return res.json({ success: true, message: 'Senha alterada com sucesso!' });
       }
 
       let senhaValida = '3105';
@@ -314,6 +359,19 @@ module.exports = async (req, res) => {
       return res.json(data);
     }
 
+    // DELETE /api/opcoes/pagamentos/:id
+    const matchDelPag = pathname.match(/^\/opcoes\/pagamentos\/(\d+)$/);
+    if (matchDelPag && method === 'DELETE') {
+      const id = parseInt(matchDelPag[1], 10);
+      const { count: emUso } = await supabase.from('vendas').select('*', { count: 'exact', head: true }).eq('pagamento_id', id);
+      if (emUso && emUso > 0) {
+        return res.status(400).json({ error: `Esta opção não pode ser excluída pois está vinculada a ${emUso} venda(s).` });
+      }
+      const { error } = await supabase.from('pagamentos').delete().eq('id', id);
+      if (error) throw error;
+      return res.json({ success: true, message: 'Forma de pagamento excluída!' });
+    }
+
     // POST /api/opcoes/captacoes
     if (pathname === '/opcoes/captacoes' && method === 'POST') {
       const { nome } = req.body || {};
@@ -323,20 +381,47 @@ module.exports = async (req, res) => {
       return res.json(data);
     }
 
+    // DELETE /api/opcoes/captacoes/:id
+    const matchDelCap = pathname.match(/^\/opcoes\/captacoes\/(\d+)$/);
+    if (matchDelCap && method === 'DELETE') {
+      const id = parseInt(matchDelCap[1], 10);
+      const { count: emUso } = await supabase.from('vendas').select('*', { count: 'exact', head: true }).eq('captacao_id', id);
+      if (emUso && emUso > 0) {
+        return res.status(400).json({ error: `Esta opção não pode ser excluída pois está vinculada a ${emUso} venda(s).` });
+      }
+      const { error } = await supabase.from('captacoes').delete().eq('id', id);
+      if (error) throw error;
+      return res.json({ success: true, message: 'Forma de captação excluída!' });
+    }
+
     // 2. GET /api/dashboard
     if (pathname === '/dashboard' && method === 'GET') {
       const competenciaAtual = obterCompetenciaAtual();
-      const { vendedorId, isGerente } = await obterFiltroVendedor();
+      const { vendedorId, isGerente, isVendedor } = await obterFiltroVendedor();
 
       // Card 1: Vendas no mês
       let qVendasMes = supabase
         .from('vendas')
-        .select('valor_credito')
+        .select('valor_credito, comissao_vendedor_pct, comissao_gerente_pct, comissao_meses')
         .eq('mes_ano_competencia', competenciaAtual);
       if (vendedorId) qVendasMes = qVendasMes.eq('vendedor_id', vendedorId);
       const { data: vendasMes, error: errMes } = await qVendasMes;
       if (errMes) throw errMes;
+
       const totalMes = (vendasMes || []).reduce((acc, curr) => acc + Number(curr.valor_credito), 0);
+
+      // Calcular comissões do ciclo
+      let totalComissaoVendedor = 0;
+      let totalComissaoGerente = 0;
+
+      (vendasMes || []).forEach(v => {
+        const val = Number(v.valor_credito) || 0;
+        const pctVend = v.comissao_vendedor_pct !== undefined && v.comissao_vendedor_pct !== null ? Number(v.comissao_vendedor_pct) : 1.0;
+        const pctGer = v.comissao_gerente_pct !== undefined && v.comissao_gerente_pct !== null ? Number(v.comissao_gerente_pct) : 0.5;
+
+        totalComissaoVendedor += val * (pctVend / 100);
+        totalComissaoGerente += val * (pctGer / 100);
+      });
 
       // Card 2: Quantidade de vendas
       let qQtd = supabase.from('vendas').select('*', { count: 'exact', head: true });
@@ -370,7 +455,10 @@ module.exports = async (req, res) => {
         quantidadeVendas: qtdVendas || 0,
         ticketMedio,
         clientesCadastrados: qtdClientes || 0,
-        isGerente
+        isGerente,
+        isVendedor,
+        totalComissaoVendedor,
+        totalComissaoGerente
       });
     }
 
@@ -387,12 +475,32 @@ module.exports = async (req, res) => {
         numeroContrato,
         formaCaptacaoId,
         mesAnoCompetencia: mesCompetenciaInformado,
-        vendedorId: vendedorEscolhido
+        vendedorId: vendedorEscolhido,
+        comissaoVendedorPct,
+        comissaoMeses,
+        comissaoGerentePct
       } = req.body || {};
 
       let vendedorIdFinal = userAuth ? userAuth.id : 1;
       if (userAuth && userAuth.perfil === 'gerente' && vendedorEscolhido) {
         vendedorIdFinal = Number(vendedorEscolhido);
+      }
+
+      // Porcentagens de comissão
+      let comVendPct = 1.0;
+      let comMesesQtd = 1;
+      let comGerPct = 0.5;
+
+      if (userAuth && userAuth.perfil === 'gerente') {
+        comVendPct = comissaoVendedorPct !== undefined && comissaoVendedorPct !== '' ? parseFloat(comissaoVendedorPct) : 1.0;
+        comMesesQtd = comissaoMeses ? parseInt(comissaoMeses, 10) : 1;
+        comGerPct = comissaoGerentePct !== undefined && comissaoGerentePct !== '' ? parseFloat(comissaoGerentePct) : 0.5;
+      } else {
+        // Vendedor cadastrando: herda a comissão padrão cadastrada para ele
+        const { data: vendData } = await supabase.from('usuarios').select('comissao_padrao_pct').eq('id', vendedorIdFinal).maybeSingle();
+        comVendPct = vendData && vendData.comissao_padrao_pct !== undefined ? Number(vendData.comissao_padrao_pct) : 1.0;
+        comMesesQtd = 1;
+        comGerPct = 0.5;
       }
 
       if (!nomeCliente || !nomeCliente.trim()) return res.status(400).json({ error: 'O nome do cliente é obrigatório.' });
@@ -505,7 +613,10 @@ module.exports = async (req, res) => {
         captacao_id: formaCaptacaoId,
         valor_credito: valCreditoNum,
         data_venda: dataVenda,
-        mes_ano_competencia: mesAnoCompetencia
+        mes_ano_competencia: mesAnoCompetencia,
+        comissao_vendedor_pct: comVendPct,
+        comissao_meses: comMesesQtd,
+        comissao_gerente_pct: comGerPct
       };
       if (vendedorIdFinal) insertVendaObj.vendedor_id = vendedorIdFinal;
 
@@ -538,7 +649,10 @@ module.exports = async (req, res) => {
         numeroContrato,
         formaCaptacaoId,
         mesAnoCompetencia: mesCompetenciaInformado,
-        vendedorId: vendedorEscolhido
+        vendedorId: vendedorEscolhido,
+        comissaoVendedorPct,
+        comissaoMeses,
+        comissaoGerentePct
       } = req.body || {};
 
       if (!nomeCliente || !nomeCliente.trim()) return res.status(400).json({ error: 'O nome do cliente é obrigatório.' });
@@ -563,7 +677,7 @@ module.exports = async (req, res) => {
       // Obter venda atual
       const { data: vendaAtual, error: errVendaAtual } = await supabase
         .from('vendas')
-        .select('id, contrato_id, cliente_id, cota_id, vendedor_id')
+        .select('id, contrato_id, cliente_id, cota_id, vendedor_id, comissao_vendedor_pct, comissao_meses, comissao_gerente_pct')
         .eq('id', vendaId)
         .maybeSingle();
 
@@ -670,6 +784,13 @@ module.exports = async (req, res) => {
       };
       if (userAuth && userAuth.perfil === 'gerente' && vendedorEscolhido) {
         updateVendaObj.vendedor_id = Number(vendedorEscolhido);
+      }
+
+      // Comissões
+      if (userAuth && userAuth.perfil === 'gerente') {
+        if (comissaoVendedorPct !== undefined && comissaoVendedorPct !== '') updateVendaObj.comissao_vendedor_pct = parseFloat(comissaoVendedorPct);
+        if (comissaoMeses !== undefined && comissaoMeses !== '') updateVendaObj.comissao_meses = parseInt(comissaoMeses, 10);
+        if (comissaoGerentePct !== undefined && comissaoGerentePct !== '') updateVendaObj.comissao_gerente_pct = parseFloat(comissaoGerentePct);
       }
 
       const { error: errUpdVenda } = await supabase
@@ -853,6 +974,9 @@ module.exports = async (req, res) => {
           pagamento_id,
           captacao_id,
           vendedor_id,
+          comissao_vendedor_pct,
+          comissao_meses,
+          comissao_gerente_pct,
           clientes!inner (nome),
           contratos!inner (numero),
           cotas!inner (numero, grupos!inner (numero)),
@@ -888,7 +1012,10 @@ module.exports = async (req, res) => {
         captacao_id: v.captacao_id,
         mes_ano_competencia: v.mes_ano_competencia,
         vendedor_id: v.vendedor_id,
-        vendedor_nome: v.usuarios?.nome
+        vendedor_nome: v.usuarios?.nome,
+        comissao_vendedor_pct: v.comissao_vendedor_pct !== undefined && v.comissao_vendedor_pct !== null ? v.comissao_vendedor_pct : 1.0,
+        comissao_meses: v.comissao_meses !== undefined && v.comissao_meses !== null ? v.comissao_meses : 1,
+        comissao_gerente_pct: v.comissao_gerente_pct !== undefined && v.comissao_gerente_pct !== null ? v.comissao_gerente_pct : 0.5
       }));
 
       return res.json({

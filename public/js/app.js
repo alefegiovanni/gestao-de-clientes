@@ -4,6 +4,7 @@ const app = {
   opcoes: { pagamentos: [], captacoes: [] },
   usuarioAtual: null,
   vendedores: [],
+  vendedorFiltroAtivo: 'todos', // 'todos' ou ID numérico do vendedor
 
   init() {
     // Restaurar usuário se já logado
@@ -45,9 +46,8 @@ const app = {
 
   getFiltroVendedorParam() {
     if (this.usuarioAtual?.perfil === 'gerente') {
-      const sel = document.getElementById('selectFiltroVendedor');
-      if (sel && sel.value && sel.value !== 'todos') {
-        return `&vendedorId=${encodeURIComponent(sel.value)}`;
+      if (this.vendedorFiltroAtivo && this.vendedorFiltroAtivo !== 'todos') {
+        return `&vendedorId=${encodeURIComponent(this.vendedorFiltroAtivo)}`;
       }
     }
     return '';
@@ -60,6 +60,7 @@ const app = {
     const roleEl = document.getElementById('userRoleDisplay');
     const avatarEl = document.getElementById('userAvatar');
     const menuUsuarios = document.getElementById('menuItemUsuarios');
+    const sidebarVendedores = document.getElementById('sidebarVendedoresBlock');
     const barFiltro = document.getElementById('barFiltroVendedorGlobal');
     const grupoNovaVenda = document.getElementById('grupoVendedorNovaVenda');
     const grupoModal = document.getElementById('grupoVendedorModalEdicao');
@@ -76,6 +77,20 @@ const app = {
     if (barFiltro) barFiltro.style.display = isGerente ? 'block' : 'none';
     if (grupoNovaVenda) grupoNovaVenda.style.display = isGerente ? 'block' : 'none';
     if (grupoModal) grupoModal.style.display = isGerente ? 'block' : 'none';
+
+    const grupoComissoesNova = document.getElementById('grupoComissoesNovaVenda');
+    if (grupoComissoesNova) grupoComissoesNova.style.display = isGerente ? 'block' : 'none';
+
+    const grupoComissoesModal = document.getElementById('grupoComissoesModalEdicao');
+    if (grupoComissoesModal) grupoComissoesModal.style.display = isGerente ? 'block' : 'none';
+
+    const cardGerenteWrap = document.getElementById('cardComissaoGerenteWrapper');
+    if (cardGerenteWrap) cardGerenteWrap.style.display = isGerente ? 'flex' : 'none';
+
+    const labelComVend = document.getElementById('labelCardComissaoVendedor');
+    const subComVend = document.getElementById('subCardComissaoVendedor');
+    if (labelComVend) labelComVend.textContent = isGerente ? 'Comissão Vendedores' : 'Minha Comissão';
+    if (subComVend) subComVend.textContent = isGerente ? 'Total repasse da equipe' : 'Comissão total a receber';
 
     document.querySelectorAll('.th-vendedor').forEach(th => {
       th.style.display = isGerente ? '' : 'none';
@@ -138,6 +153,12 @@ const app = {
         loginScreen.style.display = 'none';
         this.atualizarInterfaceUsuario();
         this.mostrarToast(`Bem-vindo(a), ${this.usuarioAtual.nome}!`);
+
+        // Se for primeiro acesso, abre modal obrigatório para o usuário trocar a senha
+        if (this.usuarioAtual.primeiroAcesso) {
+          this.abrirModalPrimeiroAcesso();
+        }
+
         this.carregarOpcoes().then(() => {
           this.carregarDashboard();
         });
@@ -150,6 +171,9 @@ const app = {
         inputSenha.focus();
       }
     });
+
+    // Configurar formulário de troca de senha no Primeiro Acesso
+    this.configurarPrimeiroAcesso();
 
     // Botão Sair do Sistema
     if (btnSair) {
@@ -188,6 +212,76 @@ const app = {
           this.mostrarToast(err.message, 'erro');
         }
       });
+    }
+  },
+
+  // Modal e Lógica de Primeiro Acesso
+  configurarPrimeiroAcesso() {
+    const modal = document.getElementById('modalPrimeiroAcesso');
+    const form = document.getElementById('formPrimeiroAcesso');
+    const inputNova = document.getElementById('novaSenhaPrimeiroAcesso');
+    const inputConf = document.getElementById('confirmaSenhaPrimeiroAcesso');
+    const erroDiv = document.getElementById('erroPrimeiroAcesso');
+
+    [inputNova, inputConf].forEach(inp => {
+      if (inp) {
+        inp.addEventListener('input', (e) => {
+          e.target.value = e.target.value.replace(/\D/g, '');
+          if (erroDiv) erroDiv.style.display = 'none';
+        });
+      }
+    });
+
+    if (form) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const nova = inputNova.value.trim();
+        const conf = inputConf.value.trim();
+
+        if (nova.length !== 4) {
+          erroDiv.textContent = 'A nova senha deve conter exatamente 4 números.';
+          erroDiv.style.display = 'block';
+          return;
+        }
+
+        if (nova !== conf) {
+          erroDiv.textContent = 'As senhas digitadas não coincidem.';
+          erroDiv.style.display = 'block';
+          return;
+        }
+
+        try {
+          const res = await fetch('/api/alterar-senha-primeiro-acesso', {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: JSON.stringify({ novaSenha: nova })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Erro ao alterar senha.');
+
+          // Atualizar estado
+          if (this.usuarioAtual) {
+            this.usuarioAtual.primeiroAcesso = false;
+            sessionStorage.setItem('gestao_usuario', JSON.stringify(this.usuarioAtual));
+          }
+
+          modal.style.display = 'none';
+          this.mostrarToast(data.message || 'Senha cadastrada com sucesso!');
+          form.reset();
+        } catch (err) {
+          erroDiv.textContent = err.message;
+          erroDiv.style.display = 'block';
+        }
+      });
+    }
+  },
+
+  abrirModalPrimeiroAcesso() {
+    const modal = document.getElementById('modalPrimeiroAcesso');
+    if (modal) {
+      modal.style.display = 'flex';
+      const inputNova = document.getElementById('novaSenhaPrimeiroAcesso');
+      if (inputNova) setTimeout(() => inputNova.focus(), 100);
     }
   },
 
@@ -501,19 +595,12 @@ const app = {
       if (!res.ok) return;
       this.vendedores = await res.json();
 
-      // Popular select do filtro global
-      const selFiltro = document.getElementById('selectFiltroVendedor');
-      if (selFiltro) {
-        const valAtual = selFiltro.value || 'todos';
-        selFiltro.innerHTML = '<option value="todos">👥 Todos os Vendedores (Geral)</option>';
-        this.vendedores.forEach(v => {
-          const opt = document.createElement('option');
-          opt.value = v.id;
-          opt.textContent = `👤 ${v.nome}`;
-          selFiltro.appendChild(opt);
-        });
-        selFiltro.value = valAtual;
-      }
+      // Atualizar contagem no sidebar
+      const badgeQtd = document.getElementById('sidebarQtdVendedores');
+      if (badgeQtd) badgeQtd.textContent = this.vendedores.length;
+
+      // Renderizar botões/chips com o nome de cada vendedor
+      this.renderizarBotoesVendedores();
 
       // Popular select do form Nova Venda
       const selForm = document.getElementById('campoVendedorVenda');
@@ -543,18 +630,61 @@ const app = {
     }
   },
 
-  // Configurar Filtro Global de Vendedor para o Gerente
-  configurarFiltroVendedor() {
-    const sel = document.getElementById('selectFiltroVendedor');
-    if (sel) {
-      sel.addEventListener('change', () => {
-        if (this.secaoAtual === 'dashboard') this.carregarDashboard();
-        if (this.secaoAtual === 'clientes') this.carregarClientes();
-        if (this.secaoAtual === 'contratos') this.carregarContratos();
-        if (this.secaoAtual === 'relatorios') this.carregarRelatorios();
-        if (this.secaoAtual === 'vendas-mes') this.carregarVendasMes();
+  // Renderizar os botões com os nomes dos vendedores no Topo (Painel da Gerente)
+  renderizarBotoesVendedores() {
+    const chipsContainer = document.getElementById('vendedoresChipsContainer');
+    if (chipsContainer) {
+      chipsContainer.innerHTML = '';
+
+      // Botão "Toda a Equipe"
+      const chipTodos = document.createElement('button');
+      chipTodos.type = 'button';
+      chipTodos.className = `chip-vendedor ${this.vendedorFiltroAtivo === 'todos' ? 'active' : ''}`;
+      chipTodos.innerHTML = `<span class="chip-avatar">👥</span> <span>Toda a Equipe</span>`;
+      chipTodos.addEventListener('click', () => this.selecionarVendedorFiltro('todos'));
+      chipsContainer.appendChild(chipTodos);
+
+      // Botão para cada vendedor
+      this.vendedores.forEach(v => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        const isAtivo = String(this.vendedorFiltroAtivo) === String(v.id);
+        chip.className = `chip-vendedor ${isAtivo ? 'active' : ''}`;
+        const inicial = (v.nome || 'V').charAt(0).toUpperCase();
+        chip.innerHTML = `<span class="chip-avatar">${inicial}</span> <span>${v.nome}</span>`;
+        chip.addEventListener('click', () => this.selecionarVendedorFiltro(v.id));
+        chipsContainer.appendChild(chip);
       });
     }
+
+    // Atualizar texto do status
+    const statusEl = document.getElementById('statusFiltroAtivo');
+    if (statusEl) {
+      if (this.vendedorFiltroAtivo === 'todos') {
+        statusEl.innerHTML = 'Visualizando: <strong>Toda a Equipe (Geral)</strong>';
+      } else {
+        const vend = this.vendedores.find(v => String(v.id) === String(this.vendedorFiltroAtivo));
+        const nome = vend ? vend.nome : 'Vendedor';
+        statusEl.innerHTML = `Visualizando vendedor: <strong>${nome}</strong>`;
+      }
+    }
+  },
+
+  // Selecionar vendedor clicado e atualizar telas
+  selecionarVendedorFiltro(vendedorId) {
+    this.vendedorFiltroAtivo = vendedorId;
+    this.renderizarBotoesVendedores();
+
+    // Recarrega os dados da tela ativa com o filtro aplicado
+    if (this.secaoAtual === 'dashboard') this.carregarDashboard();
+    if (this.secaoAtual === 'clientes') this.carregarClientes();
+    if (this.secaoAtual === 'contratos') this.carregarContratos();
+    if (this.secaoAtual === 'relatorios') this.carregarRelatorios();
+    if (this.secaoAtual === 'vendas-mes') this.carregarVendasMes();
+  },
+
+  configurarFiltroVendedor() {
+    // Os cliques já são configurados diretamente em renderizarBotoesVendedores
   },
 
   // Gestão de Usuários e Equipe (Exclusivo Gerente)
@@ -588,6 +718,7 @@ const app = {
         const usuario = document.getElementById('usuarioLogin').value.trim();
         const senha = document.getElementById('usuarioSenha').value.trim();
         const perfil = document.getElementById('usuarioPerfil').value;
+        const comissaoPadrao = document.getElementById('usuarioComissaoPadrao').value;
 
         if (senha && senha.length !== 4) {
           this.mostrarToast('A senha deve ter exatamente 4 números.', 'erro');
@@ -596,6 +727,9 @@ const app = {
 
         const payload = { nome, usuario, perfil };
         if (senha) payload.senha = senha;
+        if (comissaoPadrao !== undefined && comissaoPadrao !== '') {
+          payload.comissaoPadraoPct = parseFloat(comissaoPadrao);
+        }
 
         try {
           const url = id ? `/api/usuarios/${id}` : '/api/usuarios';
@@ -629,6 +763,8 @@ const app = {
     const loginInput = document.getElementById('usuarioLogin');
     const senhaInput = document.getElementById('usuarioSenha');
     const perfilInput = document.getElementById('usuarioPerfil');
+    const comissaoInput = document.getElementById('usuarioComissaoPadrao');
+    const grupoComissao = document.getElementById('grupoComissaoPadraoUsuario');
 
     if (item) {
       titulo.textContent = 'Editar Usuário';
@@ -639,6 +775,8 @@ const app = {
       senhaInput.required = false;
       hintSenha.style.display = 'block';
       perfilInput.value = item.perfil;
+      if (comissaoInput) comissaoInput.value = item.comissao_padrao_pct !== undefined ? item.comissao_padrao_pct : 1.0;
+      if (grupoComissao) grupoComissao.style.display = item.perfil === 'vendedor' ? 'block' : 'none';
     } else {
       titulo.textContent = 'Novo Membro da Equipe';
       idInput.value = '';
@@ -648,6 +786,14 @@ const app = {
       senhaInput.required = true;
       hintSenha.style.display = 'none';
       perfilInput.value = 'vendedor';
+      if (comissaoInput) comissaoInput.value = '1.0';
+      if (grupoComissao) grupoComissao.style.display = 'block';
+    }
+
+    if (perfilInput && grupoComissao) {
+      perfilInput.onchange = () => {
+        grupoComissao.style.display = perfilInput.value === 'vendedor' ? 'block' : 'none';
+      };
     }
 
     modal.style.display = 'flex';
@@ -667,14 +813,28 @@ const app = {
         const tr = document.createElement('tr');
         const badgeClass = u.perfil === 'gerente' ? 'badge-perfil-gerente' : 'badge-perfil-vendedor';
         const perfilTexto = u.perfil === 'gerente' ? '👑 Gerente' : '💼 Vendedor';
+        const dataCadastro = u.criado_em ? this.formatarDataBR(u.criado_em.substring(0, 10)) : '-';
 
         tr.innerHTML = `
           <td><strong>${u.nome}</strong></td>
           <td><code>${u.usuario}</code></td>
           <td><span class="${badgeClass}">${perfilTexto}</span></td>
-          <td style="text-align: center;">
-            <button class="btn-action" onclick="app.abrirModalUsuario(${JSON.stringify(u).replace(/"/g, '&quot;')})">✏️ Editar</button>
-            ${u.id !== this.usuarioAtual.id ? `<button class="btn-action" style="color: var(--danger); margin-left: 6px;" onclick="app.excluirUsuario(${u.id}, '${u.nome}')">🗑️ Excluir</button>` : ''}
+          <td>${dataCadastro}</td>
+          <td style="text-align: center; white-space: nowrap;">
+            <button class="btn-action" onclick="app.abrirModalUsuario(${JSON.stringify(u).replace(/"/g, '&quot;')})">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 20h9"></path>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+              </svg>
+              <span>Editar</span>
+            </button>
+            <button class="btn-action btn-action-danger" style="margin-left: 6px;" onclick="app.excluirUsuario(${u.id}, '${u.nome}')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              <span>Excluir</span>
+            </button>
           </td>
         `;
         tbody.appendChild(tr);
@@ -750,6 +910,14 @@ const app = {
         if (vendedorSel) {
           payload.vendedorId = Number(vendedorSel);
         }
+
+        const comVend = document.getElementById('campoComissaoVendedorPct').value;
+        const comMeses = document.getElementById('campoComissaoMeses').value;
+        const comGer = document.getElementById('campoComissaoGerentePct').value;
+
+        if (comVend !== '') payload.comissaoVendedorPct = parseFloat(comVend);
+        if (comMeses) payload.comissaoMeses = parseInt(comMeses, 10);
+        if (comGer !== '') payload.comissaoGerentePct = parseFloat(comGer);
       }
 
       try {
@@ -794,9 +962,13 @@ const app = {
 
       document.getElementById('cardVendasMes').textContent = this.formatarMoeda(data.vendasNoMes);
       document.getElementById('cardQtdVendas').textContent = data.quantidadeVendas;
-      document.getElementById('cardTicketMedio').textContent = this.formatarMoeda(data.ticketMedio);
-      document.getElementById('cardQtdClientes').textContent = data.clientesCadastrados;
       
+      const cardComVend = document.getElementById('cardComissaoVendedor');
+      if (cardComVend) cardComVend.textContent = this.formatarMoeda(data.totalComissaoVendedor || 0);
+
+      const cardComGer = document.getElementById('cardComissaoGerente');
+      if (cardComGer) cardComGer.textContent = this.formatarMoeda(data.totalComissaoGerente || 0);
+
       const compTexto = this.formatarCompetenciaBR(data.competenciaAtual);
       document.getElementById('cardMesReferencia').textContent = `Mês atual: ${compTexto}`;
     } catch (err) {
@@ -839,7 +1011,11 @@ const app = {
           <td>${this.formatarDataBR(item.data_venda)}</td>
           <td style="text-align: center;">
             <button class="btn-action" onclick="app.abrirModalEdicao(${JSON.stringify(item).replace(/"/g, '&quot;')})">
-              ✏️ Editar
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 20h9"></path>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+              </svg>
+              <span>Editar</span>
             </button>
           </td>
         `;
@@ -894,7 +1070,11 @@ const app = {
           <td><span class="badge-tag">${item.forma_pagamento}</span></td>
           <td style="text-align: center;">
             <button class="btn-action" onclick="app.abrirModalEdicao(${JSON.stringify(item).replace(/"/g, '&quot;')})">
-              ✏️ Editar
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 20h9"></path>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+              </svg>
+              <span>Editar</span>
             </button>
           </td>
         `;
@@ -1017,11 +1197,32 @@ const app = {
             ? `<td><span class="badge-vendedor">👤 ${item.vendedor_nome || 'Não inf.'}</span></td>` 
             : '';
 
+          // Cálculo da comissão da venda
+          const pctVend = item.comissao_vendedor_pct || 0;
+          const mesesVend = item.comissao_meses || 1;
+          const valorTotalVend = (item.valor_credito * (pctVend / 100));
+          const valorParcelaVend = valorTotalVend / mesesVend;
+
+          const comissaoTd = `
+            <td>
+              <div style="font-weight: 600; color: #15803d;">${this.formatarMoeda(valorTotalVend)} <span style="font-size: 0.72rem; color: #64748b;">(${pctVend}%)</span></div>
+              <div style="font-size: 0.72rem; color: #64748b;">${mesesVend > 1 ? `${mesesVend}x de ${this.formatarMoeda(valorParcelaVend)}` : 'À vista (1 mês)'}</div>
+            </td>
+          `;
+
+          const pctGer = item.comissao_gerente_pct || 0;
+          const valorGer = item.valor_credito * (pctGer / 100);
+          const gerenteComissaoTd = isGerente
+            ? `<td><span style="font-weight: 600; color: #1d4ed8;">${this.formatarMoeda(valorGer)}</span> <span style="font-size: 0.72rem; color: #64748b;">(${pctGer}%)</span></td>`
+            : '';
+
           linhasHtml += `
             <tr>
               <td><strong>${item.cliente_nome}</strong></td>
               ${vendedorTd}
               <td><span class="badge-money">${this.formatarMoeda(item.valor_credito)}</span></td>
+              ${comissaoTd}
+              ${gerenteComissaoTd}
               <td><span class="badge-tag">${item.forma_pagamento}</span></td>
               <td>${item.cota_numero}</td>
               <td>${item.grupo_numero}</td>
@@ -1030,7 +1231,11 @@ const app = {
               <td><span class="badge-tag">${item.forma_captacao}</span></td>
               <td style="text-align: center;">
                 <button class="btn-action" onclick="app.abrirModalEdicao(${JSON.stringify(item).replace(/"/g, '&quot;')})">
-                  ✏️ Editar
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 20h9"></path>
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                  </svg>
+                  <span>Editar</span>
                 </button>
               </td>
             </tr>
@@ -1044,6 +1249,8 @@ const app = {
                 <th>Nome do Cliente</th>
                 ${isGerente ? '<th class="th-vendedor">Vendedor</th>' : ''}
                 <th>Valor do Crédito</th>
+                <th>Comissão Vendedor</th>
+                ${isGerente ? '<th>Comissão Gerente</th>' : ''}
                 <th>Forma de Pagamento</th>
                 <th>Número da Cota</th>
                 <th>Número do Grupo</th>
@@ -1166,24 +1373,82 @@ const app = {
     listaPag.innerHTML = '';
     this.opcoes.pagamentos.forEach(p => {
       const li = document.createElement('li');
+      li.style.display = 'flex';
+      li.style.justifyContent = 'space-between';
+      li.style.alignItems = 'center';
       li.style.padding = '8px 12px';
       li.style.background = '#f8fafc';
       li.style.borderRadius = '6px';
       li.style.fontSize = '0.88rem';
-      li.textContent = `• ${p.nome}`;
+      li.style.border = '1px solid #e2e8f0';
+
+      li.innerHTML = `
+        <span style="font-weight: 500; color: var(--text-main);">• ${p.nome}</span>
+        <button class="btn-action btn-action-danger" style="padding: 4px 8px; font-size: 0.72rem;" onclick="app.excluirOpcaoPagamento(${p.id}, '${p.nome.replace(/'/g, "\\'")}')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          <span>Excluir</span>
+        </button>
+      `;
       listaPag.appendChild(li);
     });
 
     listaCap.innerHTML = '';
     this.opcoes.captacoes.forEach(c => {
       const li = document.createElement('li');
+      li.style.display = 'flex';
+      li.style.justifyContent = 'space-between';
+      li.style.alignItems = 'center';
       li.style.padding = '8px 12px';
       li.style.background = '#f8fafc';
       li.style.borderRadius = '6px';
       li.style.fontSize = '0.88rem';
-      li.textContent = `• ${c.nome}`;
+      li.style.border = '1px solid #e2e8f0';
+
+      li.innerHTML = `
+        <span style="font-weight: 500; color: var(--text-main);">• ${c.nome}</span>
+        <button class="btn-action btn-action-danger" style="padding: 4px 8px; font-size: 0.72rem;" onclick="app.excluirOpcaoCaptacao(${c.id}, '${c.nome.replace(/'/g, "\\'")}')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          <span>Excluir</span>
+        </button>
+      `;
       listaCap.appendChild(li);
     });
+  },
+
+  async excluirOpcaoPagamento(id, nome) {
+    if (!confirm(`Deseja realmente excluir a forma de pagamento "${nome}"?`)) return;
+
+    try {
+      const res = await fetch(`/api/opcoes/pagamentos/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao excluir forma de pagamento.');
+
+      this.mostrarToast('Forma de pagamento excluída com sucesso!');
+      await this.carregarOpcoes();
+    } catch (err) {
+      this.mostrarToast(err.message, 'erro');
+    }
+  },
+
+  async excluirOpcaoCaptacao(id, nome) {
+    if (!confirm(`Deseja realmente excluir a forma de captação "${nome}"?`)) return;
+
+    try {
+      const res = await fetch(`/api/opcoes/captacoes/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao excluir forma de captação.');
+
+      this.mostrarToast('Forma de captação excluída com sucesso!');
+      await this.carregarOpcoes();
+    } catch (err) {
+      this.mostrarToast(err.message, 'erro');
+    }
   },
 
   // MODAL DE EDIÇÃO DE VENDAS
@@ -1267,6 +1532,14 @@ const app = {
         if (selVendedorModal && selVendedorModal.value) {
           payload.vendedorId = Number(selVendedorModal.value);
         }
+
+        const comVend = document.getElementById('editComissaoVendedorPct').value;
+        const comMeses = document.getElementById('editComissaoMeses').value;
+        const comGer = document.getElementById('editComissaoGerentePct').value;
+
+        if (comVend !== '') payload.comissaoVendedorPct = parseFloat(comVend);
+        if (comMeses) payload.comissaoMeses = parseInt(comMeses, 10);
+        if (comGer !== '') payload.comissaoGerentePct = parseFloat(comGer);
       }
 
       try {
@@ -1361,6 +1634,15 @@ const app = {
     if (selVendedorModal && item.vendedor_id) {
       selVendedorModal.value = item.vendedor_id;
     }
+
+    // Preencher comissões no modal de edição
+    const editComVend = document.getElementById('editComissaoVendedorPct');
+    const editComMes = document.getElementById('editComissaoMeses');
+    const editComGer = document.getElementById('editComissaoGerentePct');
+
+    if (editComVend) editComVend.value = item.comissao_vendedor_pct !== undefined ? item.comissao_vendedor_pct : 1.0;
+    if (editComMes) editComMes.value = item.comissao_meses || 1;
+    if (editComGer) editComGer.value = item.comissao_gerente_pct !== undefined ? item.comissao_gerente_pct : 0.5;
 
     modal.style.display = 'flex';
   },
